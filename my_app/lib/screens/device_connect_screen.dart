@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import '../bluetooth/bluetooth_manager.dart'; // Update import
-import 'live_data_screen.dart'; // Add this import
+import 'package:provider/provider.dart'; // REQUIRED for theming
+import '../provider/theme_provider.dart'; // REQUIRED for theming
+import '../bluetooth/bluetooth_manager.dart';
+import 'live_data_screen.dart';
 
 class DeviceConnectScreen extends StatefulWidget {
   const DeviceConnectScreen({super.key});
@@ -26,7 +28,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
     super.initState();
     _checkBluetoothState();
 
-    // ========== NEW: SET UP CALLBACKS ==========
+    // ========== SET UP CALLBACKS ==========
     bluetoothManager.addConnectionCallback(_handleConnectionChanged);
     bluetoothManager.addSensorDataCallback(_handleSensorData);
 
@@ -41,6 +43,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
         isConnected = connected;
         connectedDevice = bluetoothManager.connectedDevice;
         if (!connected) {
+          // If disconnected, clear UI data
           sensorData = '';
         }
       });
@@ -80,6 +83,12 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
 
   /// Starts scanning and updates the devices list with filtered OpenEarable devices
   Future<void> startScan() async {
+    final state = await FlutterBluePlus.adapterState.first;
+    if (state != BluetoothAdapterState.on && mounted) {
+      _showBluetoothOffDialog();
+      return;
+    }
+
     if (isScanning) return;
 
     setState(() => isScanning = true);
@@ -128,19 +137,18 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
       final connected = await bluetoothManager.connectToDevice(device);
 
       if (connected) {
-        // Configure sensors and set sampling rate
+        // --- START STREAMING LOGIC ---
+        // NOTE: This part MUST be updated with the simpler startStreaming()
+        // method once it is added to BluetoothManager, but for now we use the old logic:
         await bluetoothManager.configureSensors(accel: true, gyro: true);
         await bluetoothManager.setSamplingRate(50);
-
-        // Subscribe to accelerometer data
-        final subscribed = await bluetoothManager.subscribeToSensor(
+        await bluetoothManager.subscribeToSensor(
           BluetoothManager.accelerometerCharUuid,
-              (data) {
-            // Data will be parsed and callbacks called automatically in parseAccelerometerData
-          },
+          bluetoothManager.parseAccelerometerData, // Use parser to trigger callbacks
         );
+        // --- END STREAMING LOGIC ---
 
-        if (subscribed && mounted) {
+        if (mounted) {
           // Get battery level
           final battery = await bluetoothManager.getBatteryLevel();
 
@@ -170,6 +178,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
   /// Disconnect from the current device
   Future<void> disconnect() async {
     try {
+      // Disconnecting also calls unsubscribeAll() in BluetoothManager
       await bluetoothManager.disconnect();
       // Callback will update the UI
 
@@ -188,22 +197,149 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
 
   @override
   void dispose() {
-    // ========== NEW: REMOVE CALLBACKS ==========
+    // ========== REMOVE CALLBACKS ==========
     bluetoothManager.removeConnectionCallback(_handleConnectionChanged);
     bluetoothManager.removeSensorDataCallback(_handleSensorData);
     super.dispose();
   }
 
+  // --- Widget Builders (Updated for theming) ---
+
+  Widget _buildDeviceTile(ScanResult result, bool isDarkMode) {
+    final deviceName = result.device.platformName.isNotEmpty
+        ? result.device.platformName
+        : result.device.remoteId.toString();
+
+    final isAlreadyConnected = isConnected &&
+        connectedDevice?.remoteId.toString() == result.device.remoteId.toString();
+
+    final textColor = isDarkMode ? Colors.white : Colors.black;
+    final subtitleColor = textColor.withOpacity(0.5);
+
+    // Theme-aware colors for the tile
+    final tileBackgroundColor = isAlreadyConnected
+        ? Colors.green.withOpacity(0.1)
+        : isDarkMode
+        ? Colors.white.withOpacity(0.05)
+        : Colors.black.withOpacity(0.05);
+
+    final tileBorderColor = isAlreadyConnected
+        ? Colors.green
+        : isDarkMode
+        ? Colors.white.withOpacity(0.1)
+        : Colors.black.withOpacity(0.1);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: tileBackgroundColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: tileBorderColor,
+          width: isAlreadyConnected ? 1.5 : 1,
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isAlreadyConnected
+                ? Colors.green.withOpacity(0.2)
+                : Colors.blueAccent.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            isAlreadyConnected ? Icons.bluetooth_connected : Icons.bluetooth,
+            color: isAlreadyConnected
+                ? Colors.green
+                : Colors.blueAccent,
+          ),
+        ),
+        title: Text(
+          deviceName,
+          style: TextStyle(
+            color: textColor,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "RSSI: ${result.rssi}",
+              style: TextStyle(
+                color: subtitleColor,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        trailing: isAlreadyConnected
+            ? const Text(
+          "CONNECTED",
+          style: TextStyle(
+            color: Colors.greenAccent,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        )
+            : TextButton(
+          onPressed: () async {
+            await connectToDevice(result.device);
+          },
+          style: TextButton.styleFrom(
+            backgroundColor: Colors.green.withOpacity(0.2),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          child: const Text(
+            "CONNECT",
+            style: TextStyle(
+              color: Colors.greenAccent,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
+    // Access ThemeProvider state
+    // NOTE: This assumes ThemeProvider is correctly set up using the Provider package
+    final isDarkMode = Provider.of<ThemeProvider>(context).currentBrightness == Brightness.dark;
+
+    // Theme-aware colors
+    final textColor = isDarkMode ? Colors.white : Colors.black;
+    final subtitleColor = textColor.withOpacity(0.5);
+
+    // Background Gradient (custom dark mode theme colors from original code)
+    final backgroundGradient = isDarkMode
+        ? const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xFF1A1A2E), Color(0xFF0F0F1A)],
+    )
+        : LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Colors.grey[200]!, Colors.white],
+    );
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(isConnected ? "Connected" : "Device Scanner"),
         backgroundColor: Colors.transparent,
-        iconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(
-          color: Colors.white,
+        iconTheme: IconThemeData(color: textColor),
+        titleTextStyle: TextStyle(
+          color: textColor,
           fontSize: 20,
           fontWeight: FontWeight.bold,
         ),
@@ -224,19 +360,15 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
               child: Icon(
                 Icons.radar,
                 color: isScanning
-                    ? const Color.fromRGBO(0, 122, 255, 0.8)
-                    : const Color.fromRGBO(0, 122, 255, 1),
+                    ? Colors.blueAccent.withOpacity(0.8)
+                    : Colors.blueAccent,
               ),
             ),
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1A1A2E), Color(0xFF0F0F1A)],
-          ),
+        decoration: BoxDecoration(
+          gradient: backgroundGradient,
         ),
         child: SafeArea(
           child: Column(
@@ -246,9 +378,9 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
               if (isConnected && connectedDevice != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration: const BoxDecoration(
-                    color: Color.fromRGBO(0, 200, 83, 0.2),
-                    border: Border(
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.2),
+                    border: const Border(
                       bottom: BorderSide(color: Colors.green, width: 1),
                     ),
                   ),
@@ -262,16 +394,16 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                           children: [
                             Text(
                               connectedDevice!.platformName,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: textColor,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                             if (sensorData.isNotEmpty)
                               Text(
                                 sensorData,
-                                style: const TextStyle(
-                                  color: Colors.white70,
+                                style: TextStyle(
+                                  color: subtitleColor,
                                   fontSize: 12,
                                 ),
                                 overflow: TextOverflow.ellipsis,
@@ -280,12 +412,12 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.sensors, color: Colors.white70),
+                        icon: Icon(Icons.sensors, color: textColor.withOpacity(0.7)),
                         onPressed: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => LiveDataScreen(),
+                              builder: (context) => const LiveDataScreen(),
                             ),
                           );
                         },
@@ -295,12 +427,12 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                   ),
                 ),
 
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
                 child: Text(
                   "AVAILABLE DEVICES",
                   style: TextStyle(
-                    color: Color.fromRGBO(255, 255, 255, 0.5),
+                    color: subtitleColor,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 1.5,
@@ -310,25 +442,25 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
 
               Expanded(
                 child: devices.isEmpty && !isScanning
-                    ? const Center(
+                    ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         Icons.bluetooth_disabled,
-                        color: Color.fromRGBO(255, 255, 255, 0.3),
+                        color: textColor.withOpacity(0.3),
                         size: 60,
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       Text(
                         "No OpenEarable devices found",
-                        style: TextStyle(color: Colors.white70),
+                        style: TextStyle(color: textColor.withOpacity(0.7)),
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
                         "Tap scan to search for devices",
                         style: TextStyle(
-                          color: Color.fromRGBO(255, 255, 255, 0.5),
+                          color: subtitleColor,
                           fontSize: 12,
                         ),
                       ),
@@ -338,7 +470,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                     : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: devices.length,
-                  itemBuilder: (context, index) => _buildDeviceTile(devices[index]),
+                  itemBuilder: (context, index) => _buildDeviceTile(devices[index], isDarkMode),
                 ),
               ),
 
@@ -354,11 +486,12 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => LiveDataScreen(),
+                                builder: (context) => const LiveDataScreen(),
                               ),
                             );
                           },
                           style: ElevatedButton.styleFrom(
+                            foregroundColor: isDarkMode ? Colors.black : Colors.white,
                             backgroundColor: Colors.green,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
@@ -373,13 +506,14 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                       Expanded(
                         child: FloatingActionButton.extended(
                           onPressed: isScanning ? null : startScan,
+                          foregroundColor: isDarkMode ? Colors.black : Colors.white,
                           backgroundColor: isScanning
-                              ? const Color.fromRGBO(0, 122, 255, 0.5)
-                              : const Color.fromRGBO(0, 122, 255, 1),
+                              ? Colors.blueAccent.withOpacity(0.5)
+                              : Colors.blueAccent,
                           icon: Icon(isScanning ? Icons.hourglass_top : Icons.bluetooth_searching),
-                          label: Text(
-                            isScanning ? "SCANNING..." : "SCAN FOR DEVICES",
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          label: const Text(
+                            "SCAN FOR DEVICES",
+                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
                       ),
@@ -387,97 +521,6 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDeviceTile(ScanResult result) {
-    final deviceName = result.device.platformName.isNotEmpty
-        ? result.device.platformName
-        : result.device.remoteId.toString();
-
-    final isAlreadyConnected = isConnected &&
-        connectedDevice?.remoteId.toString() == result.device.remoteId.toString();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isAlreadyConnected
-            ? const Color.fromRGBO(0, 200, 83, 0.1)
-            : const Color.fromRGBO(255, 255, 255, 0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isAlreadyConnected
-              ? Colors.green
-              : const Color.fromRGBO(255, 255, 255, 0.1),
-          width: isAlreadyConnected ? 1.5 : 1,
-        ),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: isAlreadyConnected
-                ? const Color.fromRGBO(0, 200, 83, 0.2)
-                : const Color.fromRGBO(0, 122, 255, 0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            isAlreadyConnected ? Icons.bluetooth_connected : Icons.bluetooth,
-            color: isAlreadyConnected
-                ? Colors.green
-                : const Color.fromRGBO(0, 122, 255, 1),
-          ),
-        ),
-        title: Text(
-          deviceName,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "RSSI: ${result.rssi}",
-              style: const TextStyle(
-                color: Color.fromRGBO(255, 255, 255, 0.5),
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-        trailing: isAlreadyConnected
-            ? const Text(
-          "CONNECTED",
-          style: TextStyle(
-            color: Colors.greenAccent,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-          ),
-        )
-            : TextButton(
-          onPressed: () async {
-            await connectToDevice(result.device);
-          },
-          style: TextButton.styleFrom(
-            backgroundColor: const Color.fromRGBO(0, 200, 83, 0.2),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-          ),
-          child: const Text(
-            "CONNECT",
-            style: TextStyle(
-              color: Colors.greenAccent,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
           ),
         ),
       ),

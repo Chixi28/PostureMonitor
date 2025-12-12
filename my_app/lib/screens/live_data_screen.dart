@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../provider/theme_provider.dart';
 import '../bluetooth/bluetooth_manager.dart';
 import 'dart:math';
 
@@ -26,13 +28,9 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
   @override
   void initState() {
     super.initState();
-
-    // ========== NEW: SET UP CALLBACKS ==========
     bluetoothManager.addConnectionCallback(_handleConnectionChanged);
     bluetoothManager.addAccelerometerCallback(_handleAccelerometerData);
     bluetoothManager.addSensorDataCallback(_handleSensorData);
-
-    // Initialize with current state
     isConnected = bluetoothManager.isConnected;
   }
 
@@ -75,265 +73,16 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
 
   @override
   void dispose() {
-    // ========== NEW: REMOVE CALLBACKS ==========
     bluetoothManager.removeConnectionCallback(_handleConnectionChanged);
     bluetoothManager.removeAccelerometerCallback(_handleAccelerometerData);
     bluetoothManager.removeSensorDataCallback(_handleSensorData);
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text("Telemetry", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1A1A2E), Color(0xFF0F0F1A)],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Connection status
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: isConnected ? Colors.green : Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          bluetoothManager.connectedDevice?.platformName ?? 'OpenEarable Device',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.white70),
-                        onPressed: () => Navigator.pop(context),
-                        tooltip: 'Back to Device List',
-                      ),
-                    ],
-                  ),
-                ),
+  // --- Widget Builders (Updated to take theme colors) ---
 
-                const SizedBox(height: 20),
-
-                // 1. Digital Readouts (X, Y, Z)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildReadoutCard(
-                      "ACCEL X",
-                      accelerometerData['x']?.toStringAsFixed(3) ?? '0.000',
-                      Colors.redAccent,
-                      'g',
-                    ),
-                    _buildReadoutCard(
-                      "ACCEL Y",
-                      accelerometerData['y']?.toStringAsFixed(3) ?? '0.000',
-                      Colors.greenAccent,
-                      'g',
-                    ),
-                    _buildReadoutCard(
-                      "ACCEL Z",
-                      accelerometerData['z']?.toStringAsFixed(3) ?? '0.000',
-                      Colors.blueAccent,
-                      'g',
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-
-                // 2. Magnitude and orientation
-                Row(
-                  children: [
-                    // Magnitude
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withOpacity(0.1)),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              'MAGNITUDE',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _calculateMagnitude(accelerometerData).toStringAsFixed(3),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'Courier',
-                              ),
-                            ),
-                            Text(
-                              'g',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.5),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(width: 12),
-
-                    // Orientation indicators
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withOpacity(0.1)),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              'ORIENTATION',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _buildOrientationIndicator(
-                              'Pitch',
-                              _calculatePitch(accelerometerData),
-                              Colors.purpleAccent,
-                            ),
-                            const SizedBox(height: 8),
-                            _buildOrientationIndicator(
-                              'Roll',
-                              _calculateRoll(accelerometerData),
-                              Colors.orangeAccent,
-                            ),
-                            const SizedBox(height: 8),
-                            _buildOrientationIndicator(
-                              'Yaw',
-                              _calculateYaw(accelerometerData),
-                              Colors.cyanAccent,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-
-                // 3. Main Chart Area
-                const Text(
-                  "REAL-TIME PLOT",
-                  style: TextStyle(
-                    color: Colors.white54,
-                    fontSize: 12,
-                    letterSpacing: 2,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
-                    ),
-                    child: Column(
-                      children: [
-                        // Chart legend
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildChartLegend('X', Colors.redAccent),
-                            const SizedBox(width: 20),
-                            _buildChartLegend('Y', Colors.greenAccent),
-                            const SizedBox(width: 20),
-                            _buildChartLegend('Z', Colors.blueAccent),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Chart area
-                        Expanded(
-                          child: accelerometerHistoryX.isNotEmpty
-                              ? CustomPaint(
-                            painter: ChartPainter(
-                              dataX: accelerometerHistoryX,
-                              dataY: accelerometerHistoryY,
-                              dataZ: accelerometerHistoryZ,
-                              colorX: Colors.redAccent,
-                              colorY: Colors.greenAccent,
-                              colorZ: Colors.blueAccent,
-                            ),
-                          )
-                              : Center(
-                            child: Text(
-                              "STREAMING DATA...",
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.3),
-                                fontFamily: "Courier",
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReadoutCard(String label, String value, Color color, String unit) {
+  Widget _buildReadoutCard(
+      String label, String value, Color color, String unit, Color dataTextColor, Color containerColor) {
     return Container(
       width: 100,
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
@@ -351,8 +100,8 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: dataTextColor, // THEME CHANGE
               fontSize: 18,
               fontWeight: FontWeight.bold,
               fontFamily: 'Courier',
@@ -371,7 +120,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
     );
   }
 
-  Widget _buildOrientationIndicator(String label, double angle, Color color) {
+  Widget _buildOrientationIndicator(String label, double angle, Color color, Color containerColor, Color dataTextColor) {
     return Row(
       children: [
         SizedBox(
@@ -389,7 +138,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
           child: Container(
             height: 6,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: containerColor, // THEME CHANGE
               borderRadius: BorderRadius.circular(3),
             ),
             child: FractionallySizedBox(
@@ -444,6 +193,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
     );
   }
 
+  // --- Utility Calculations (Unchanged) ---
   double _calculateMagnitude(Map<String, double> data) {
     final x = data['x'] ?? 0.0;
     final y = data['y'] ?? 0.0;
@@ -469,7 +219,294 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
     final y = data['y'] ?? 0.0;
     return atan2(y, x) * 180 / pi;
   }
+
+  // --- Main Build Method ---
+  @override
+  Widget build(BuildContext context) {
+    // Access ThemeProvider state
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.currentBrightness == Brightness.dark;
+
+    // Theme-aware colors
+    final textColor = isDarkMode ? Colors.white : Colors.black;
+    final containerColor = isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
+    final dataTextColor = isDarkMode ? Colors.white : Colors.black;
+
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text("Telemetry", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        // Icon and text colors are now handled by AppBarTheme in theme_provider.dart
+      ),
+      body: Container(
+        // THEME CHANGE: Conditional Background Gradient
+        decoration: BoxDecoration(
+          gradient: isDarkMode
+              ? const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1A1A2E), Color(0xFF0F0F1A)],
+          )
+              : const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFE0E0E0), Color(0xFFF0F0F0)],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Connection status
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  // THEME CHANGE: Container color
+                  decoration: BoxDecoration(
+                    color: containerColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: isConnected ? Colors.green : Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          bluetoothManager.connectedDevice?.platformName ?? 'OpenEarable Device',
+                          style: TextStyle(
+                            color: textColor, // THEME CHANGE: Text color
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.arrow_back, color: textColor.withOpacity(0.7)), // THEME CHANGE: Icon color
+                        onPressed: () => Navigator.pop(context),
+                        tooltip: 'Back to Device List',
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // 1. Digital Readouts (X, Y, Z)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildReadoutCard(
+                      "ACCEL X",
+                      accelerometerData['x']?.toStringAsFixed(3) ?? '0.000',
+                      Colors.redAccent,
+                      'g',
+                      dataTextColor,
+                      containerColor,
+                    ),
+                    _buildReadoutCard(
+                      "ACCEL Y",
+                      accelerometerData['y']?.toStringAsFixed(3) ?? '0.000',
+                      Colors.greenAccent,
+                      'g',
+                      dataTextColor,
+                      containerColor,
+                    ),
+                    _buildReadoutCard(
+                      "ACCEL Z",
+                      accelerometerData['z']?.toStringAsFixed(3) ?? '0.000',
+                      Colors.blueAccent,
+                      'g',
+                      dataTextColor,
+                      containerColor,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // 2. Magnitude and orientation
+                Row(
+                  children: [
+                    // Magnitude
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        // THEME CHANGE: Container color and border
+                        decoration: BoxDecoration(
+                          color: containerColor,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: textColor.withOpacity(0.1)),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'MAGNITUDE',
+                              style: TextStyle(
+                                color: textColor.withOpacity(0.7), // THEME CHANGE: Text color
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _calculateMagnitude(accelerometerData).toStringAsFixed(3),
+                              style: TextStyle(
+                                color: dataTextColor, // THEME CHANGE: Text color
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Courier',
+                              ),
+                            ),
+                            Text(
+                              'g',
+                              style: TextStyle(
+                                color: textColor.withOpacity(0.5), // THEME CHANGE: Text color
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    // Orientation indicators
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        // THEME CHANGE: Container color and border
+                        decoration: BoxDecoration(
+                          color: containerColor,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: textColor.withOpacity(0.1)),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'ORIENTATION',
+                              style: TextStyle(
+                                color: textColor.withOpacity(0.7), // THEME CHANGE: Text color
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildOrientationIndicator(
+                              'Pitch',
+                              _calculatePitch(accelerometerData),
+                              Colors.purpleAccent,
+                              containerColor,
+                              dataTextColor,
+                            ),
+                            const SizedBox(height: 8),
+                            _buildOrientationIndicator(
+                              'Roll',
+                              _calculateRoll(accelerometerData),
+                              Colors.orangeAccent,
+                              containerColor,
+                              dataTextColor,
+                            ),
+                            const SizedBox(height: 8),
+                            _buildOrientationIndicator(
+                              'Yaw',
+                              _calculateYaw(accelerometerData),
+                              Colors.cyanAccent,
+                              containerColor,
+                              dataTextColor,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // 3. Main Chart Area
+                Text(
+                  "REAL-TIME PLOT",
+                  style: TextStyle(
+                    color: textColor.withOpacity(0.54), // THEME CHANGE: Text color
+                    fontSize: 12,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    // THEME CHANGE: Container color and border
+                    decoration: BoxDecoration(
+                      color: containerColor,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: textColor.withOpacity(0.1)),
+                    ),
+                    child: Column(
+                      children: [
+                        // Chart legend
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildChartLegend('X', Colors.redAccent),
+                            const SizedBox(width: 20),
+                            _buildChartLegend('Y', Colors.greenAccent),
+                            const SizedBox(width: 20),
+                            _buildChartLegend('Z', Colors.blueAccent),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Chart area
+                        Expanded(
+                          child: accelerometerHistoryX.isNotEmpty
+                              ? CustomPaint(
+                            painter: ChartPainter(
+                              dataX: accelerometerHistoryX,
+                              dataY: accelerometerHistoryY,
+                              dataZ: accelerometerHistoryZ,
+                              colorX: Colors.redAccent,
+                              colorY: Colors.greenAccent,
+                              colorZ: Colors.blueAccent,
+                              gridColor: textColor.withOpacity(0.08), // THEME CHANGE: Grid color
+                            ),
+                          )
+                              : Center(
+                            child: Text(
+                              "STREAMING DATA...",
+                              style: TextStyle(
+                                color: textColor.withOpacity(0.3), // THEME CHANGE: Text color
+                                fontFamily: "Courier",
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
+
+// --- Chart Painter (Modified) ---
 
 class ChartPainter extends CustomPainter {
   final List<double> dataX;
@@ -478,6 +515,7 @@ class ChartPainter extends CustomPainter {
   final Color colorX;
   final Color colorY;
   final Color colorZ;
+  final Color gridColor; // ADDED: Theme-aware grid color
 
   ChartPainter({
     required this.dataX,
@@ -486,27 +524,13 @@ class ChartPainter extends CustomPainter {
     required this.colorX,
     required this.colorY,
     required this.colorZ,
+    required this.gridColor, // ADDED
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paintX = Paint()
-      ..color = colorX
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    final paintY = Paint()
-      ..color = colorY
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    final paintZ = Paint()
-      ..color = colorZ
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
     final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.05)
+      ..color = gridColor // THEME CHANGE: Use dynamic grid color
       ..strokeWidth = 1;
 
     // Draw grid lines
@@ -521,7 +545,7 @@ class ChartPainter extends CustomPainter {
 
     // Find min and max values for scaling
     final allData = [...dataX, ...dataY, ...dataZ];
-    final maxVal = allData.isNotEmpty ? allData.reduce(max).abs() : 1.0;
+    final maxVal = allData.isNotEmpty ? allData.map((e) => e.abs()).reduce(max) : 1.0;
     final minVal = -maxVal;
 
     // Draw X, Y, Z lines

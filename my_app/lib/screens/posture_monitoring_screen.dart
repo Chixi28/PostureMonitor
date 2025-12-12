@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // ADDED
+import '../provider/theme_provider.dart'; // ADDED
 import '../bluetooth/bluetooth_manager.dart';
 import 'dart:math';
 
@@ -21,6 +23,9 @@ class PostureMonitorScreen extends StatefulWidget {
 
 class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
   final BluetoothManager bluetoothManager = BluetoothManager.instance;
+
+  // ... (All existing state variables and methods like _calculatePitch, _analyzePosture, etc., remain the same)
+  // ... (Due to space, I'm omitting the unchanged methods like initState, _handleConnectionChanged, _analyzePosture, _calibratePosture, etc.)
 
   // Sensor data
   Map<String, double> accelerometerData = {'x': 0.0, 'y': 0.0, 'z': 0.0};
@@ -73,45 +78,35 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
   @override
   void initState() {
     super.initState();
-
+    // ... (rest of initState remains unchanged)
     final isConnected = bluetoothManager.isConnected;
-
-    // Check initial connection state
     if (isConnected) {
       _initialConnectionCheckPassed = true;
       _sessionStartTime = DateTime.now();
       _startStatisticsTimer();
-      // Set initial status color/message based on connection (or lack thereof)
       _postureMessage = "Good posture! Keep it up!";
       _postureColor = Colors.green;
       _postureStatus = PostureStatus.good;
     } else {
-      // If disconnected on launch, set neutral state
       _postureMessage = "Device disconnected. Please connect the OpenEarable.";
       _postureColor = Colors.blueGrey;
       _postureStatus = PostureStatus.neutral;
     }
-
-
-    // Set up callbacks
     bluetoothManager.addAccelerometerCallback(_handleAccelerometerData);
     bluetoothManager.addConnectionCallback(_handleConnectionChanged);
   }
 
   void _handleConnectionChanged(bool connected) {
     if (!mounted) return;
-
     setState(() {
       if (connected) {
         _initialConnectionCheckPassed = true;
         _sessionStartTime = DateTime.now();
         _startStatisticsTimer();
-        // Reset stats on new connection
         _goodPostureTime = 0;
         _warningPostureTime = 0;
         _badPostureTime = 0;
       } else if (_initialConnectionCheckPassed) {
-        // Only pop if the device *was* connected and now is *not*.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (Navigator.canPop(context)) {
             Navigator.pop(context);
@@ -121,8 +116,6 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
           }
         });
       }
-
-      // Update UI state when disconnected
       if (!connected) {
         _statisticsTimer?.cancel();
         _postureStatus = PostureStatus.neutral;
@@ -133,30 +126,20 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
   }
 
   void _handleAccelerometerData(Map<String, double> data) {
-    if (!mounted || !bluetoothManager.isConnected) return; // Ignore data if not connected
-
+    if (!mounted || !bluetoothManager.isConnected) return;
+    // ... (rest of _handleAccelerometerData logic)
     setState(() {
       accelerometerData = data;
-
-      // Calculate orientation
       _currentPitch = _calculatePitch(data);
       _currentRoll = _calculateRoll(data);
       _currentYaw = _calculateYaw(data);
       _currentMagnitude = _calculateMagnitude(data);
-
-      // Apply calibration
       if (_isCalibrated) {
         _currentPitch -= _calibratedPitch;
         _currentRoll -= _calibratedRoll;
       }
-
-      // Update history
       _updateHistory();
-
-      // Analyze posture
       _analyzePosture();
-
-      // Detect movement
       _detectMovement();
     });
   }
@@ -164,7 +147,6 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
   void _updateHistory() {
     _pitchHistory.add(_currentPitch);
     _rollHistory.add(_currentRoll);
-
     if (_pitchHistory.length > _maxHistory) {
       _pitchHistory.removeAt(0);
       _rollHistory.removeAt(0);
@@ -173,42 +155,25 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
 
   void _analyzePosture() {
     if (!bluetoothManager.isConnected) return;
-
-    // Get average over last few readings to smooth out noise
     double avgPitch = _getAverage(_pitchHistory);
     double avgRoll = _getAverage(_rollHistory);
-
-    // Check for bad posture (slouching)
     if (avgPitch.abs() > _badPitchThreshold) {
-      // Head tilted too far forward or backward
       _postureStatus = PostureStatus.bad;
       _postureColor = Colors.red;
-
-      if (avgPitch > 0) {
-        _postureMessage = "You're slouching forward!\nSit up straight.";
-      } else {
-        _postureMessage = "Head tilted too far back!";
-      }
-    }
-    // Check for warning posture
-    else if (avgPitch.abs() > _warningPitchRange || avgRoll.abs() > _warningRollRange) {
+      _postureMessage = avgPitch > 0
+          ? "You're slouching forward!\nSit up straight."
+          : "Head tilted too far back!";
+    } else if (avgPitch.abs() > _warningPitchRange || avgRoll.abs() > _warningRollRange) {
       _postureStatus = PostureStatus.warning;
       _postureColor = Colors.orange;
-
-      if (avgPitch.abs() > _warningPitchRange) {
-        _postureMessage = "Slight slouch detected.\nAdjust your posture.";
-      } else {
-        _postureMessage = "Head tilted to the side.\nCenter your head.";
-      }
-    }
-    // Good posture
-    else if (avgPitch.abs() < _goodPitchRange && avgRoll.abs() < _goodRollRange) {
+      _postureMessage = avgPitch.abs() > _warningPitchRange
+          ? "Slight slouch detected.\nAdjust your posture."
+          : "Head tilted to the side.\nCenter your head.";
+    } else if (avgPitch.abs() < _goodPitchRange && avgRoll.abs() < _goodRollRange) {
       _postureStatus = PostureStatus.good;
       _postureColor = Colors.green;
       _postureMessage = "Good posture! Keep it up!";
-    }
-    // Neutral (between good and warning)
-    else {
+    } else {
       _postureStatus = PostureStatus.neutral;
       _postureColor = Colors.blue;
       _postureMessage = "Posture is okay.\nCould be improved.";
@@ -217,32 +182,25 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
 
   void _detectMovement() {
     if (!bluetoothManager.isConnected) return;
-
-    // Calculate movement variance
     if (_pitchHistory.length < 5) return;
-
     double pitchVariance = _calculateVariance(_pitchHistory);
     double rollVariance = _calculateVariance(_rollHistory);
-
     bool wasMoving = _isMoving;
     _isMoving = (pitchVariance > _movementThreshold) || (rollVariance > _movementThreshold);
-
     if (_isMoving) {
       _stillTime = 0;
     } else {
       _stillTime++;
     }
-
-    // Alert if sitting still for too long (e.g., 60 seconds)
     if (!wasMoving && !_isMoving && _stillTime > 60) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('You\'ve been sitting still for 60 seconds. Time to stretch!'),
+          const SnackBar(
+            content: Text('You\'ve been sitting still for 60 seconds. Time to stretch!'),
             backgroundColor: Colors.blue,
           ),
         );
-        _stillTime = 0; // Reset timer after alert
+        _stillTime = 0;
       }
     }
   }
@@ -257,13 +215,11 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
       );
       return;
     }
-
     setState(() {
       _calibratedPitch = _currentPitch;
       _calibratedRoll = _currentRoll;
       _isCalibrated = true;
     });
-
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Posture calibrated! This position is now set as your good posture.'),
@@ -273,13 +229,12 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
   }
 
   void _startStatisticsTimer() {
-    _statisticsTimer?.cancel(); // Cancel any existing timer
+    _statisticsTimer?.cancel();
     _statisticsTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted || !bluetoothManager.isConnected) {
         timer.cancel();
         return;
       }
-
       setState(() {
         switch (_postureStatus) {
           case PostureStatus.good:
@@ -287,7 +242,6 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
             break;
           case PostureStatus.warning:
           case PostureStatus.neutral:
-          // Neutral postures are grouped with warning time for stats
             _warningPostureTime++;
             break;
           case PostureStatus.bad:
@@ -300,58 +254,49 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
 
   String _getSessionDuration() {
     if (_sessionStartTime == null || !bluetoothManager.isConnected) return "0:00";
-
     final duration = DateTime.now().difference(_sessionStartTime!);
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
     return '${minutes}:${seconds.toString().padLeft(2, '0')}';
   }
 
-  // --- Utility Calculations ---
-
+  // --- Utility Calculations (unchanged) ---
   double _getAverage(List<double> list) {
     if (list.isEmpty) return 0.0;
     return list.reduce((a, b) => a + b) / list.length;
   }
-
   double _calculateVariance(List<double> list) {
     if (list.length < 2) return 0.0;
-
     double mean = _getAverage(list);
     double variance = 0.0;
-
     for (var value in list) {
       variance += pow(value - mean, 2);
     }
-
     return variance / list.length;
   }
-
   double _calculateMagnitude(Map<String, double> data) {
     final x = data['x'] ?? 0.0;
     final y = data['y'] ?? 0.0;
     final z = data['z'] ?? 0.0;
     return sqrt(x * x + y * y + z * z);
   }
-
   double _calculatePitch(Map<String, double> data) {
     final x = data['x'] ?? 0.0;
     final y = data['y'] ?? 0.0;
     final z = data['z'] ?? 0.0;
     return atan2(-x, sqrt(y * y + z * z)) * 180 / pi;
   }
-
   double _calculateRoll(Map<String, double> data) {
     final y = data['y'] ?? 0.0;
     final z = data['z'] ?? 0.0;
     return atan2(y, z) * 180 / pi;
   }
-
   double _calculateYaw(Map<String, double> data) {
     final x = data['x'] ?? 0.0;
     final y = data['y'] ?? 0.0;
     return atan2(y, x) * 180 / pi;
   }
+  // --- End Utility Calculations ---
 
   // --- Widget Builders ---
 
@@ -370,26 +315,26 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
     }
   }
 
-  Widget _buildDisconnectedView(BuildContext context) {
+  Widget _buildDisconnectedView(BuildContext context, Color textColor, Color containerColor) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.signal_cellular_connected_no_internet_0_bar, color: Colors.white24, size: 60),
+          Icon(Icons.signal_cellular_connected_no_internet_0_bar, color: textColor.withOpacity(0.25), size: 60),
           const SizedBox(height: 20),
-          const Text(
+          Text(
             'No Live Data',
             style: TextStyle(
-              color: Colors.white54,
+              color: textColor.withOpacity(0.54),
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Connect your OpenEarable device to start monitoring posture.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white38),
+            style: TextStyle(color: textColor.withOpacity(0.38)),
           ),
           const SizedBox(height: 20),
           OutlinedButton.icon(
@@ -427,7 +372,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
     );
   }
 
-  Widget _buildConnectedVisualization(BuildContext context) {
+  Widget _buildConnectedVisualization(BuildContext context, Color textColor, Color containerColor) {
     // Get constraints of the parent widget
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -435,15 +380,12 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
         final centerX = constraints.maxWidth / 2;
         final centerY = constraints.maxHeight / 2;
 
-        // Scaling factor: map max angle deviation (e.g., 40 degrees) to a safe area on screen
         final maxRadius = (min(constraints.maxWidth, constraints.maxHeight) / 2) * 0.8;
-        const maxAngleToDisplay = 40.0; // Max angle for visual scaling
+        const maxAngleToDisplay = 40.0;
 
-        // Clamp and scale the pitch and roll values
         final clampedPitch = _currentPitch.clamp(-maxAngleToDisplay, maxAngleToDisplay);
         final clampedRoll = _currentRoll.clamp(-maxAngleToDisplay, maxAngleToDisplay);
 
-        // Calculate display coordinates (Pitch affects Y, Roll affects X)
         final displayX = centerX + (clampedRoll / maxAngleToDisplay) * maxRadius;
         final displayY = centerY + (clampedPitch / maxAngleToDisplay) * maxRadius;
 
@@ -452,7 +394,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
             Text(
               'HEAD ORIENTATION',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: textColor.withOpacity(0.7),
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
@@ -465,7 +407,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                   // Background grid/box
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      border: Border.all(color: textColor.withOpacity(0.1)),
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
@@ -495,20 +437,20 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                     top: centerY - 1,
                     left: 0,
                     right: 0,
-                    child: Container(height: 2, color: Colors.white.withOpacity(0.3)),
+                    child: Container(height: 2, color: textColor.withOpacity(0.3)),
                   ),
                   // Center crosshair (Vertical)
                   Positioned(
                     left: centerX - 1,
                     top: 0,
                     bottom: 0,
-                    child: Container(width: 2, color: Colors.white.withOpacity(0.3)),
+                    child: Container(width: 2, color: textColor.withOpacity(0.3)),
                   ),
 
                   // Head position indicator
                   Positioned(
-                    left: displayX - 20, // Adjust by half the indicator size
-                    top: displayY - 20, // Adjust by half the indicator size
+                    left: displayX - 20,
+                    top: displayY - 20,
                     child: Container(
                       width: 40,
                       height: 40,
@@ -517,9 +459,9 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                         shape: BoxShape.circle,
                         border: Border.all(color: _postureColor, width: 2),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.face,
-                        color: Colors.white,
+                        color: textColor,
                         size: 24,
                       ),
                     ),
@@ -570,7 +512,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
     );
   }
 
-  Widget _buildStatistic(String label, String value, Color color) {
+  Widget _buildStatistic(String label, String value, Color color, Color textColor) {
     return Column(
       children: [
         Container(
@@ -585,7 +527,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
+            color: textColor.withOpacity(0.7),
             fontSize: 10,
           ),
         ),
@@ -604,30 +546,32 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
   @override
   void dispose() {
     _statisticsTimer?.cancel();
-
     bluetoothManager.removeAccelerometerCallback(_handleAccelerometerData);
     bluetoothManager.removeConnectionCallback(_handleConnectionChanged);
-
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Access ThemeProvider state
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.currentBrightness == Brightness.dark;
+
+    // Theme-aware colors
+    final textColor = isDarkMode ? Colors.white : Colors.black;
+    final containerColor = isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
+
     final isConnected = bluetoothManager.isConnected;
 
-    // Calculate posture score (0-100)
+    // ... (rest of score/percentage calculations remain the same)
     int postureScore = 100;
     if (_postureStatus == PostureStatus.warning) postureScore = 70;
     if (_postureStatus == PostureStatus.neutral) postureScore = 50;
     if (_postureStatus == PostureStatus.bad) postureScore = 30;
-
-    // Calculate percentage of time in each posture state
     int totalTime = _goodPostureTime + _warningPostureTime + _badPostureTime;
     int goodPercentage = totalTime > 0 ? (_goodPostureTime * 100 ~/ totalTime) : 0;
     int warningPercentage = totalTime > 0 ? (_warningPostureTime * 100 ~/ totalTime) : 0;
     int badPercentage = totalTime > 0 ? (_badPostureTime * 100 ~/ totalTime) : 0;
-
-    // Fallback for disconnected state
     if (!isConnected) {
       postureScore = 0;
       _postureColor = Colors.blueGrey;
@@ -641,39 +585,45 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
         title: const Text("Posture Monitor", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
+        // AppBar colors are now managed by the main MaterialApp theme
         actions: [
           IconButton(
             icon: Icon(
               _isCalibrated ? Icons.check_circle : Icons.straighten,
-              color: isConnected ? Colors.white70 : Colors.grey,
+              color: isConnected ? Theme.of(context).iconTheme.color?.withOpacity(0.7) : Colors.grey,
             ),
-            onPressed: isConnected ? _calibratePosture : null, // Disable when disconnected
+            onPressed: isConnected ? _calibratePosture : null,
             tooltip: 'Calibrate Current Posture',
           ),
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
+        // THEME CHANGE: Conditional Background Gradient
+        decoration: BoxDecoration(
+          gradient: isDarkMode
+              ? const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [Color(0xFF1A1A2E), Color(0xFF0F0F1A)],
+          )
+              : const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFE0E0E0), Color(0xFFF0F0F0)],
           ),
         ),
         child: SafeArea(
-          // FIX: Use SingleChildScrollView to prevent bottom overflow
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20.0), // Padding applied here
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Connection status
                 Container(
                   padding: const EdgeInsets.all(12),
+                  // THEME CHANGE: Container color
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: containerColor,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -693,15 +643,15 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                               ? bluetoothManager.connectedDevice?.platformName ?? 'OpenEarable Device'
                               : 'Disconnected',
                           style: TextStyle(
-                            color: isConnected ? Colors.white : Colors.redAccent,
+                            color: isConnected ? textColor : Colors.redAccent,
                             fontSize: 14,
                           ),
                         ),
                       ),
                       Text(
                         _getSessionDuration(),
-                        style: const TextStyle(
-                          color: Colors.white70,
+                        style: TextStyle(
+                          color: textColor.withOpacity(0.7),
                           fontSize: 14,
                         ),
                       ),
@@ -751,7 +701,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                             child: Text(
                               isConnected ? '$postureScore/100' : 'N/A',
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: Colors.white, // Score text is always white on the colored chip
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -766,8 +716,8 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                       Text(
                         _postureMessage,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: textColor, // THEME CHANGE: Text color
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                         ),
@@ -803,7 +753,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                                 child: Text(
                                   'Tip: Keep your ears aligned with your shoulders',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.9),
+                                    color: textColor.withOpacity(0.9), // THEME CHANGE: Text color
                                     fontSize: 12,
                                   ),
                                 ),
@@ -817,18 +767,20 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
 
                 const SizedBox(height: 20),
 
-                // Posture visualization (Now with a fixed height)
+                // Posture visualization
                 Container(
-                  height: 350, // Fixed height to prevent overflow in SingleChildScrollView
+                  height: 350,
                   padding: const EdgeInsets.all(20),
+                  // THEME CHANGE: Container color and border
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: containerColor,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    border: Border.all(color: textColor.withOpacity(0.1)),
                   ),
                   child: isConnected
-                      ? _buildConnectedVisualization(context)
-                      : _buildDisconnectedView(context),
+                      ? _buildConnectedVisualization(context, textColor, containerColor)
+                  // Pass theme colors to disconnected view
+                      : _buildDisconnectedView(context, textColor, containerColor),
                 ),
 
                 const SizedBox(height: 20),
@@ -836,8 +788,9 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                 // Statistics
                 Container(
                   padding: const EdgeInsets.all(16),
+                  // THEME CHANGE: Container color
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: containerColor,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Column(
@@ -845,7 +798,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                       Text(
                         'SESSION STATISTICS',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: textColor.withOpacity(0.7),
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -859,9 +812,9 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                _buildStatistic("Good", "$goodPercentage%", Colors.green),
-                                _buildStatistic("Warning/Neutral", "$warningPercentage%", Colors.orange),
-                                _buildStatistic("Poor", "$badPercentage%", Colors.red),
+                                _buildStatistic("Good", "$goodPercentage%", Colors.green, textColor),
+                                _buildStatistic("Warning/Neutral", "$warningPercentage%", Colors.orange, textColor),
+                                _buildStatistic("Poor", "$badPercentage%", Colors.red, textColor),
                               ],
                             ),
                             const SizedBox(height: 10),
@@ -878,15 +831,15 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                                     Expanded(flex: _badPostureTime, child: Container(color: Colors.red)),
                                   ],
                                 )
-                                    : Container(color: Colors.white.withOpacity(0.1)),
+                                    : Container(color: textColor.withOpacity(0.1)), // THEME CHANGE: Inactive bar color
                               ),
                             ),
                           ],
                         )
                       else
-                        const Text(
+                        Text(
                           "Connect device to track session statistics.",
-                          style: TextStyle(color: Colors.white54, fontSize: 14),
+                          style: TextStyle(color: textColor.withOpacity(0.54), fontSize: 14),
                         ),
                     ],
                   ),
