@@ -11,7 +11,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   // Application/Interface state variables
-  bool _soundFeedbackEnabled = false;
 
 
   // -----------------------------------------------------------------------
@@ -137,16 +136,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     (val) {
                   // Call the toggle method which rebuilds the whole app
                   themeProvider.toggleTheme();
-                },
-              ),
-
-              // 2. Sound Feedback (Kept local)
-              _buildSwitchTile(
-                Icons.notifications_active,
-                "Sound Feedback (Alerts)",
-                _soundFeedbackEnabled,
-                    (val) {
-                  setState(() => _soundFeedbackEnabled = val);
                 },
               ),
 

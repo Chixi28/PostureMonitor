@@ -9,8 +9,14 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+    with TickerProviderStateMixin { // Changed to TickerProviderStateMixin
+
+  // 1. Main Controller (for scale and fade - runs once)
+  late AnimationController _mainController;
+
+  // 2. Rotation Controller (for continuous spin - repeats)
+  late AnimationController _rotationController;
+
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
   late Animation<double> _rotationAnimation;
@@ -19,40 +25,51 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    _controller = AnimationController(
+    // 1. Initialize Main Controller (Runs once, 3 seconds duration)
+    _mainController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
     );
 
-    // 1. Icon pulses in and out
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.1).animate(
+    // 2. Initialize Rotation Controller (Runs continuously, 2 seconds for a full spin)
+    _rotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(); // Starts repeating immediately
+
+    // --- Animations linked to _mainController (run once) ---
+
+    // Icon pulses in and out, settling at 1.0 scale
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(
-        parent: _controller,
+        parent: _mainController,
         curve: const Interval(0.0, 0.6, curve: Curves.easeInOut),
       ),
     );
 
-    // 2. Text fades in and slides up
+    // Text fades in and stays visible (Interval ends at 1.0)
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.4, 0.8, curve: Curves.easeIn),
+        parent: _mainController,
+        curve: const Interval(0.4, 1.0, curve: Curves.easeIn), // Tweak: Ends at 1.0
       ),
     );
 
-    // 3. Subtle rotation for a "scanning" ring effect
+    // --- Animation linked to _rotationController (repeats) ---
+
+    // Subtle rotation for a "scanning" ring effect (uses the repeating controller)
     _rotationAnimation = Tween<double>(begin: 0.0, end: 2 * math.pi).animate(
       CurvedAnimation(
-        parent: _controller,
+        parent: _rotationController, // Tweak: Uses the repeating controller
         curve: Curves.linear,
       ),
     );
 
-    _controller.forward();
+    // Start the main animation sequence
+    _mainController.forward();
 
     // Navigate after animation + buffer
     Future.delayed(const Duration(seconds: 4), () {
-      // Ensure the widget is still mounted before navigating
       if (mounted) {
         Navigator.pushReplacementNamed(context, "/home");
       }
@@ -61,13 +78,13 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _mainController.dispose();
+    _rotationController.dispose(); // Dispose the second controller
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Matching the gradient from your Home Screen for consistency
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -91,12 +108,13 @@ class _SplashScreenState extends State<SplashScreen>
                   Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Rotating "Scanner" Ring
+                      // Rotating "Scanner" Ring (Listens to _rotationController)
                       AnimatedBuilder(
-                        animation: _controller,
+                        animation: _rotationController, // Tweak: Listens to the repeating controller
                         builder: (context, child) {
                           return Transform.rotate(
-                            angle: _controller.value * 2 * math.pi,
+                            // Tweak: Use the prepared animation value
+                            angle: _rotationAnimation.value,
                             child: Container(
                               width: 140,
                               height: 140,
@@ -107,12 +125,12 @@ class _SplashScreenState extends State<SplashScreen>
                                   width: 2,
                                   style: BorderStyle.solid,
                                 ),
-                                gradient: SweepGradient(
+                                gradient: const SweepGradient(
                                   colors: [
-                                    Colors.deepPurpleAccent.withOpacity(0.0),
-                                    Colors.deepPurpleAccent.withOpacity(0.5),
+                                    Color.fromARGB(0, 103, 58, 183), // fully transparent deepPurpleAccent
+                                    Colors.deepPurpleAccent,
                                   ],
-                                  stops: const [0.5, 1.0],
+                                  stops: [0.5, 1.0],
                                 ),
                               ),
                             ),
@@ -120,7 +138,7 @@ class _SplashScreenState extends State<SplashScreen>
                         },
                       ),
 
-                      // Pulsing Icon with Glow
+                      // Pulsing Icon with Glow (Listens to _mainController via ScaleTransition)
                       ScaleTransition(
                         scale: _scaleAnimation,
                         child: Container(
@@ -135,7 +153,7 @@ class _SplashScreenState extends State<SplashScreen>
                             ],
                           ),
                           child: const Icon(
-                            Icons.earbuds_sharp, // Changed to a "Head/Brain" icon
+                            Icons.earbuds_sharp,
                             size: 80,
                             color: Colors.white,
                           ),
@@ -146,18 +164,18 @@ class _SplashScreenState extends State<SplashScreen>
 
                   const SizedBox(height: 40),
 
-                  // Animated Text (Fade & Slide)
+                  // Animated Text (Fade & Slide - Listens to _mainController via FadeTransition)
                   FadeTransition(
-                    opacity: _fadeAnimation,
+                    opacity: _fadeAnimation, // Tweak: This now holds 1.0 until navigation
                     child: Column(
                       children: [
                         const Text(
-                          "HEAD NOD TRACKER",
+                          "POSTURE MONITOR",
                           style: TextStyle(
                             fontSize: 24,
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
-                            letterSpacing: 3.0, // Tech look
+                            letterSpacing: 3.0,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -176,7 +194,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
 
-            // Bottom Progress Indicator
+            // Bottom Progress Indicator (Continuous visual sign of loading)
             Positioned(
               bottom: 50,
               left: 0,

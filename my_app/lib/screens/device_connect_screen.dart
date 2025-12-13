@@ -98,14 +98,6 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
       final scannedDevices = await bluetoothManager.startScan(timeout: const Duration(seconds: 5));
       setState(() => devices = scannedDevices);
 
-      if (scannedDevices.isEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No OpenEarable devices found'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
     } catch (e) {
       print("Error scanning: $e");
       if (mounted) {

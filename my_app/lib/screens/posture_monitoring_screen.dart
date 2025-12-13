@@ -337,16 +337,6 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
             style: TextStyle(color: textColor.withOpacity(0.38)),
           ),
           const SizedBox(height: 20),
-          OutlinedButton.icon(
-            onPressed: () {
-              Navigator.pushNamed(context, '/deviceConnect');
-            },
-            icon: const Icon(Icons.bluetooth_searching, color: Colors.blueAccent),
-            label: const Text('Go to Connect Screen', style: TextStyle(color: Colors.blueAccent)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Colors.blueAccent),
-            ),
-          ),
         ],
       ),
     );
