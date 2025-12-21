@@ -1,17 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // ADDED
-import '../provider/theme_provider.dart'; // ADDED
-import '../bluetooth/bluetooth_manager.dart';
+import 'package:provider/provider.dart';
+import '../provider/theme_provider.dart';
+import '../bluetooth/open_earable_manager.dart';
 import 'dart:math';
 
-// Assuming your BluetoothManager and PostureStatus enum are accessible.
-// The PostureStatus enum is re-included here for completeness.
 enum PostureStatus {
   good,
   warning,
   neutral,
   bad,
+  calibrating,
 }
 
 class PostureMonitorScreen extends StatefulWidget {
@@ -24,69 +23,74 @@ class PostureMonitorScreen extends StatefulWidget {
 class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
   final BluetoothManager bluetoothManager = BluetoothManager.instance;
 
-  // ... (All existing state variables and methods like _calculatePitch, _analyzePosture, etc., remain the same)
-  // ... (Due to space, I'm omitting the unchanged methods like initState, _handleConnectionChanged, _analyzePosture, _calibratePosture, etc.)
-
   // Sensor data
   Map<String, double> accelerometerData = {'x': 0.0, 'y': 0.0, 'z': 0.0};
 
   // Posture analysis
-  double _currentPitch = 0.0;    // Head tilt forward/backward (nodding)
+  double _currentPitch = 0.0;    // Head tilt forward/backward
   double _currentRoll = 0.0;     // Head tilt side to side
-  double _currentYaw = 0.0;      // Head rotation left/right (not used for posture)
-  double _currentMagnitude = 0.0; // Overall movement (not used for posture)
+  double _currentYaw = 0.0;      // Head rotation left/right
+  double _currentMagnitude = 0.0; // Overall movement
 
   // Posture status
-  PostureStatus _postureStatus = PostureStatus.neutral; // Default to neutral/placeholder
+  PostureStatus _postureStatus = PostureStatus.neutral;
   String _postureMessage = "Waiting for data...";
   Color _postureColor = Colors.grey;
 
-  // History for smoothing and movement detection
-  List<double> _pitchHistory = [];
-  List<double> _rollHistory = [];
-  int _maxHistory = 20;
+  // History for smoothing
+  final List<double> _pitchHistory = [];
+  final List<double> _rollHistory = [];
+  final int _maxHistory = 20;
 
-  // Thresholds (adjust these based on testing)
-  static const double _goodPitchRange = 15.0;    // ±15 degrees for good posture
-  static const double _warningPitchRange = 30.0; // ±30 degrees for warning
-  static const double _badPitchThreshold = 40.0; // >40 degrees is bad
+  // Calibration parameters
+  double _calibratedPitch = 0.0;       // Baseline good posture pitch
+  double _calibratedRoll = 0.0;        // Baseline good posture roll
+  double _calibratedPitchStd = 0.0;    // Natural variation in pitch during good posture
+  double _calibratedRollStd = 0.0;     // Natural variation in roll during good posture
+  List<double> _calibrationPitchSamples = [];
+  List<double> _calibrationRollSamples = [];
+  bool _isCalibrated = false;
 
-  static const double _goodRollRange = 10.0;     // ±10 degrees for good
-  static const double _warningRollRange = 20.0;  // ±20 degrees for warning
+  // Guided calibration state
+  bool _isCalibrating = false;
+  int _calibrationProgress = 0;
+  String _calibrationMessage = "Get ready for calibration...";
+  Timer? _calibrationTimer;
+  int _calibrationSampleCount = 0;
+  final int _calibrationRequiredSamples = 50;
+  final int _calibrationSampleDuration = 5000;
+
+  // Dynamic thresholds based on calibration
+  double _goodPitchThreshold = 15.0;    // Increased from 10.0
+  double _warningPitchThreshold = 25.0; // Increased from 20.0
+  double _badPitchThreshold = 35.0;     // Increased from 30.0
+  double _goodRollThreshold = 12.0;     // Increased from 8.0
+  double _warningRollThreshold = 20.0;  // Increased from 15.0
 
   // Movement detection
   static const double _movementThreshold = 0.05;
   bool _isMoving = false;
-  int _stillTime = 0; // Time in seconds user has been still
+  int _stillTime = 0;
 
-  // Calibration
-  double _calibratedPitch = 0.0;
-  double _calibratedRoll = 0.0;
-  bool _isCalibrated = false;
+  // REMOVED: Statistics variables
+  // int _goodPostureTime = 0;
+  // int _warningPostureTime = 0;
+  // int _badPostureTime = 0;
+  // Timer? _statisticsTimer;
 
-  // Statistics
-  int _goodPostureTime = 0;
-  int _warningPostureTime = 0;
-  int _badPostureTime = 0;
-  Timer? _statisticsTimer;
   DateTime? _sessionStartTime;
-
-  // Flag to manage initial navigation pop guard
   bool _initialConnectionCheckPassed = false;
-
 
   @override
   void initState() {
     super.initState();
-    // ... (rest of initState remains unchanged)
     final isConnected = bluetoothManager.isConnected;
     if (isConnected) {
       _initialConnectionCheckPassed = true;
       _sessionStartTime = DateTime.now();
-      _startStatisticsTimer();
-      _postureMessage = "Good posture! Keep it up!";
-      _postureColor = Colors.green;
-      _postureStatus = PostureStatus.good;
+      _postureMessage = "Please calibrate your good posture first";
+      _postureColor = Colors.blue;
+      _postureStatus = PostureStatus.neutral;
     } else {
       _postureMessage = "Device disconnected. Please connect the OpenEarable.";
       _postureColor = Colors.blueGrey;
@@ -102,10 +106,10 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
       if (connected) {
         _initialConnectionCheckPassed = true;
         _sessionStartTime = DateTime.now();
-        _startStatisticsTimer();
-        _goodPostureTime = 0;
-        _warningPostureTime = 0;
-        _badPostureTime = 0;
+        // REMOVED: Statistics timer start
+        // _goodPostureTime = 0;
+        // _warningPostureTime = 0;
+        // _badPostureTime = 0;
       } else if (_initialConnectionCheckPassed) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (Navigator.canPop(context)) {
@@ -117,7 +121,6 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
         });
       }
       if (!connected) {
-        _statisticsTimer?.cancel();
         _postureStatus = PostureStatus.neutral;
         _postureColor = Colors.blueGrey;
         _postureMessage = "Device disconnected. Please connect the OpenEarable.";
@@ -126,21 +129,27 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
   }
 
   void _handleAccelerometerData(Map<String, double> data) {
-    if (!mounted || !bluetoothManager.isConnected) return;
-    // ... (rest of _handleAccelerometerData logic)
+    if (!mounted || !bluetoothManager.isConnected) {
+      return;
+    }
+
     setState(() {
       accelerometerData = data;
       _currentPitch = _calculatePitch(data);
       _currentRoll = _calculateRoll(data);
       _currentYaw = _calculateYaw(data);
       _currentMagnitude = _calculateMagnitude(data);
-      if (_isCalibrated) {
-        _currentPitch -= _calibratedPitch;
-        _currentRoll -= _calibratedRoll;
-      }
+
       _updateHistory();
-      _analyzePosture();
-      _detectMovement();
+
+      if (_isCalibrating) {
+        _collectCalibrationSample();
+      } else {
+        if (_isCalibrated) {
+          _analyzePosture();
+        }
+        _detectMovement();
+      }
     });
   }
 
@@ -153,59 +162,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
     }
   }
 
-  void _analyzePosture() {
-    if (!bluetoothManager.isConnected) return;
-    double avgPitch = _getAverage(_pitchHistory);
-    double avgRoll = _getAverage(_rollHistory);
-    if (avgPitch.abs() > _badPitchThreshold) {
-      _postureStatus = PostureStatus.bad;
-      _postureColor = Colors.red;
-      _postureMessage = avgPitch > 0
-          ? "You're slouching forward!\nSit up straight."
-          : "Head tilted too far back!";
-    } else if (avgPitch.abs() > _warningPitchRange || avgRoll.abs() > _warningRollRange) {
-      _postureStatus = PostureStatus.warning;
-      _postureColor = Colors.orange;
-      _postureMessage = avgPitch.abs() > _warningPitchRange
-          ? "Slight slouch detected.\nAdjust your posture."
-          : "Head tilted to the side.\nCenter your head.";
-    } else if (avgPitch.abs() < _goodPitchRange && avgRoll.abs() < _goodRollRange) {
-      _postureStatus = PostureStatus.good;
-      _postureColor = Colors.green;
-      _postureMessage = "Good posture! Keep it up!";
-    } else {
-      _postureStatus = PostureStatus.neutral;
-      _postureColor = Colors.blue;
-      _postureMessage = "Posture is okay.\nCould be improved.";
-    }
-  }
-
-  void _detectMovement() {
-    if (!bluetoothManager.isConnected) return;
-    if (_pitchHistory.length < 5) return;
-    double pitchVariance = _calculateVariance(_pitchHistory);
-    double rollVariance = _calculateVariance(_rollHistory);
-    bool wasMoving = _isMoving;
-    _isMoving = (pitchVariance > _movementThreshold) || (rollVariance > _movementThreshold);
-    if (_isMoving) {
-      _stillTime = 0;
-    } else {
-      _stillTime++;
-    }
-    if (!wasMoving && !_isMoving && _stillTime > 60) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You\'ve been sitting still for 60 seconds. Time to stretch!'),
-            backgroundColor: Colors.blue,
-          ),
-        );
-        _stillTime = 0;
-      }
-    }
-  }
-
-  void _calibratePosture() {
+  void _startGuidedCalibration() {
     if (!bluetoothManager.isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -215,56 +172,199 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
       );
       return;
     }
-    setState(() {
-      _calibratedPitch = _currentPitch;
-      _calibratedRoll = _currentRoll;
-      _isCalibrated = true;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Posture calibrated! This position is now set as your good posture.'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
 
-  void _startStatisticsTimer() {
-    _statisticsTimer?.cancel();
-    _statisticsTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted || !bluetoothManager.isConnected) {
+    setState(() {
+      _isCalibrating = true;
+      _calibrationProgress = 0;
+      _calibrationSampleCount = 0;
+      _calibrationPitchSamples.clear();
+      _calibrationRollSamples.clear();
+      _calibrationMessage = "1. Sit in a comfortable, upright position\n2. Look straight ahead\n3. Keep your head level\n4. Hold still for 5 seconds...";
+      _postureStatus = PostureStatus.calibrating;
+      _postureColor = Colors.blue;
+      _postureMessage = "Calibrating...";
+    });
+
+    _calibrationTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (!mounted || !bluetoothManager.isConnected || _calibrationSampleCount >= _calibrationRequiredSamples) {
         timer.cancel();
+        _completeCalibration();
         return;
       }
+
       setState(() {
-        switch (_postureStatus) {
-          case PostureStatus.good:
-            _goodPostureTime++;
-            break;
-          case PostureStatus.warning:
-          case PostureStatus.neutral:
-            _warningPostureTime++;
-            break;
-          case PostureStatus.bad:
-            _badPostureTime++;
-            break;
+        _calibrationProgress = (_calibrationSampleCount * 100 ~/ _calibrationRequiredSamples);
+        if (_calibrationProgress % 20 == 0) {
+          _calibrationMessage = "Hold still... ${(5 - (_calibrationSampleCount * 5 ~/ _calibrationRequiredSamples))}s remaining";
         }
       });
     });
   }
 
-  String _getSessionDuration() {
-    if (_sessionStartTime == null || !bluetoothManager.isConnected) return "0:00";
-    final duration = DateTime.now().difference(_sessionStartTime!);
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    return '${minutes}:${seconds.toString().padLeft(2, '0')}';
+  void _collectCalibrationSample() {
+    if (_calibrationSampleCount >= _calibrationRequiredSamples) return;
+
+    if (_pitchHistory.length >= 3) {
+      double pitchVariance = _calculateVariance(_pitchHistory);
+      double rollVariance = _calculateVariance(_rollHistory);
+
+      if (pitchVariance < _movementThreshold * 2 && rollVariance < _movementThreshold * 2) {
+        _calibrationPitchSamples.add(_currentPitch);
+        _calibrationRollSamples.add(_currentRoll);
+        _calibrationSampleCount++;
+      }
+    }
   }
 
-  // --- Utility Calculations (unchanged) ---
+  void _completeCalibration() {
+    if (!mounted) return;
+
+    if (_calibrationPitchSamples.length < _calibrationRequiredSamples * 0.8) {
+      setState(() {
+        _isCalibrating = false;
+        _calibrationMessage = "Calibration failed. Please hold still and try again.";
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Calibration failed. Please hold still and try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    double pitchMean = _calculateMean(_calibrationPitchSamples);
+    double rollMean = _calculateMean(_calibrationRollSamples);
+    double pitchStd = _calculateStandardDeviation(_calibrationPitchSamples, pitchMean);
+    double rollStd = _calculateStandardDeviation(_calibrationRollSamples, rollMean);
+
+    double pitchStdMultiplier = max(pitchStd, 3.0);
+    double rollStdMultiplier = max(rollStd, 2.5);
+
+    setState(() {
+      _calibratedPitch = pitchMean;
+      _calibratedRoll = rollMean;
+      _calibratedPitchStd = pitchStd;
+      _calibratedRollStd = rollStd;
+
+      // Set dynamic thresholds with increased base values
+      _goodPitchThreshold = max(pitchStdMultiplier * 1.5, 12.0);
+      _warningPitchThreshold = max(pitchStdMultiplier * 2.5, 22.0);
+      _badPitchThreshold = max(pitchStdMultiplier * 3.5, 32.0);
+
+      _goodRollThreshold = max(rollStdMultiplier * 1.5, 10.0);
+      _warningRollThreshold = max(rollStdMultiplier * 2.5, 18.0);
+
+      _isCalibrated = true;
+      _isCalibrating = false;
+      _calibrationProgress = 100;
+      _calibrationMessage = "Calibration complete!";
+
+      _pitchHistory.clear();
+      _rollHistory.clear();
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Calibration complete! Good posture baseline established.\nYour target: Pitch: ${pitchMean.toStringAsFixed(1)}°, Roll: ${rollMean.toStringAsFixed(1)}°'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _analyzePosture() {
+    if (!bluetoothManager.isConnected || !_isCalibrated) return;
+
+    if (_pitchHistory.length < 3) {
+      _postureStatus = PostureStatus.neutral;
+      _postureMessage = "Analyzing posture...";
+      _postureColor = Colors.blue;
+      return;
+    }
+
+    // Use smoothed values
+    double avgPitch = _getAverage(_pitchHistory);
+    double avgRoll = _getAverage(_rollHistory);
+
+    // Calculate deviation from calibrated baseline
+    double pitchDeviation = (avgPitch - _calibratedPitch).abs();
+    double rollDeviation = (avgRoll - _calibratedRoll).abs();
+
+    // Determine posture status based on deviations
+    if (pitchDeviation > _badPitchThreshold || rollDeviation > _badPitchThreshold) {
+      _postureStatus = PostureStatus.bad;
+      _postureColor = Colors.red;
+      if (pitchDeviation > rollDeviation) {
+        if (avgPitch > _calibratedPitch) {
+          _postureMessage = "You're leaning too far forward!\nSit up straight.";
+        } else {
+          _postureMessage = "Head tilted too far back!\nBring head forward.";
+        }
+      } else {
+        if (avgRoll > _calibratedRoll) {
+          _postureMessage = "Head tilted too far right!\nCenter your head.";
+        } else {
+          _postureMessage = "Head tilted too far left!\nCenter your head.";
+        }
+      }
+    } else if (pitchDeviation > _warningPitchThreshold || rollDeviation > _warningRollThreshold) {
+      _postureStatus = PostureStatus.warning;
+      _postureColor = Colors.orange;
+      if (pitchDeviation > rollDeviation) {
+        _postureMessage = "Slight slouch detected.\nAdjust your posture.";
+      } else {
+        _postureMessage = "Head slightly tilted.\nStraighten up.";
+      }
+    } else if (pitchDeviation <= _goodPitchThreshold && rollDeviation <= _goodRollThreshold) {
+      _postureStatus = PostureStatus.good;
+      _postureColor = Colors.green;
+      _postureMessage = "Excellent posture! Keep it up!";
+    } else {
+      _postureStatus = PostureStatus.neutral;
+      _postureColor = Colors.blue;
+      _postureMessage = "Acceptable posture.\nCould be improved.";
+    }
+  }
+
+  void _detectMovement() {
+    if (!bluetoothManager.isConnected) return;
+    if (_pitchHistory.length < 5) return;
+
+    double pitchVariance = _calculateVariance(_pitchHistory);
+    double rollVariance = _calculateVariance(_rollHistory);
+    _isMoving = (pitchVariance > _movementThreshold) || (rollVariance > _movementThreshold);
+
+    if (_isMoving) {
+      _stillTime = 0;
+    } else {
+      _stillTime++;
+    }
+  }
+
+  // REMOVED: _startStatisticsTimer method
+
+  // Statistical calculations
+  double _calculateMean(List<double> values) {
+    if (values.isEmpty) return 0.0;
+    return values.reduce((a, b) => a + b) / values.length;
+  }
+
+  double _calculateStandardDeviation(List<double> values, double mean) {
+    if (values.length < 2) return 0.0;
+    double variance = 0.0;
+    for (var value in values) {
+      variance += pow(value - mean, 2);
+    }
+    return sqrt(variance / values.length);
+  }
+
   double _getAverage(List<double> list) {
     if (list.isEmpty) return 0.0;
     return list.reduce((a, b) => a + b) / list.length;
   }
+
   double _calculateVariance(List<double> list) {
     if (list.length < 2) return 0.0;
     double mean = _getAverage(list);
@@ -274,31 +374,40 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
     }
     return variance / list.length;
   }
+
   double _calculateMagnitude(Map<String, double> data) {
     final x = data['x'] ?? 0.0;
     final y = data['y'] ?? 0.0;
     final z = data['z'] ?? 0.0;
     return sqrt(x * x + y * y + z * z);
   }
+
   double _calculatePitch(Map<String, double> data) {
     final x = data['x'] ?? 0.0;
     final y = data['y'] ?? 0.0;
     final z = data['z'] ?? 0.0;
-    return atan2(-x, sqrt(y * y + z * z)) * 180 / pi;
+    return atan2(x, z) * 180 / pi;
   }
+
   double _calculateRoll(Map<String, double> data) {
     final y = data['y'] ?? 0.0;
     final z = data['z'] ?? 0.0;
     return atan2(y, z) * 180 / pi;
   }
+
   double _calculateYaw(Map<String, double> data) {
     final x = data['x'] ?? 0.0;
     final y = data['y'] ?? 0.0;
     return atan2(y, x) * 180 / pi;
   }
-  // --- End Utility Calculations ---
 
-  // --- Widget Builders ---
+  String _getSessionDuration() {
+    if (_sessionStartTime == null || !bluetoothManager.isConnected) return "0:00";
+    final duration = DateTime.now().difference(_sessionStartTime!);
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    return '${minutes}:${seconds.toString().padLeft(2, '0')}';
+  }
 
   IconData _getPostureIcon() {
     switch (_postureStatus) {
@@ -310,9 +419,51 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
         return Icons.remove_circle;
       case PostureStatus.bad:
         return Icons.error;
-      default:
-        return Icons.help;
+      case PostureStatus.calibrating:
+        return Icons.timer;
     }
+  }
+
+  Widget _buildCalibrationView(BuildContext context, Color textColor, Color containerColor) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.blue.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.auto_awesome, color: Colors.blue, size: 60),
+          const SizedBox(height: 20),
+          const Text(
+            'Guided Calibration',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _calibrationMessage,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.blue, fontSize: 14),
+          ),
+          const SizedBox(height: 20),
+          LinearProgressIndicator(
+            value: _calibrationProgress / 100,
+            backgroundColor: Colors.blue.withOpacity(0.2),
+            valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '$_calibrationProgress% Complete',
+            style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildDisconnectedView(BuildContext context, Color textColor, Color containerColor) {
@@ -336,53 +487,35 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(color: textColor.withOpacity(0.38)),
           ),
-          const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  Widget _buildConnectionPrompt(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8.0),
-      child: ElevatedButton.icon(
-        onPressed: () {
-          Navigator.pushNamed(context, '/deviceConnect');
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        ),
-        icon: const Icon(Icons.bluetooth_searching, color: Colors.white),
-        label: const Text(
-          "CONNECT DEVICE",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-      ),
-    );
-  }
-
   Widget _buildConnectedVisualization(BuildContext context, Color textColor, Color containerColor) {
-    // Get constraints of the parent widget
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Center point for the visualization
         final centerX = constraints.maxWidth / 2;
         final centerY = constraints.maxHeight / 2;
-
         final maxRadius = (min(constraints.maxWidth, constraints.maxHeight) / 2) * 0.8;
-        const maxAngleToDisplay = 40.0;
+        const maxAngleToDisplay = 45.0;
 
-        final clampedPitch = _currentPitch.clamp(-maxAngleToDisplay, maxAngleToDisplay);
-        final clampedRoll = _currentRoll.clamp(-maxAngleToDisplay, maxAngleToDisplay);
+        // Calculate deviation from calibrated position
+        double pitchDeviation = _isCalibrated ? (_currentPitch - _calibratedPitch) : _currentPitch;
+        double rollDeviation = _isCalibrated ? (_currentRoll - _calibratedRoll) : _currentRoll;
 
-        final displayX = centerX + (clampedRoll / maxAngleToDisplay) * maxRadius;
-        final displayY = centerY + (clampedPitch / maxAngleToDisplay) * maxRadius;
+        // Clamp deviations for display
+        final clampedPitchDeviation = pitchDeviation.clamp(-maxAngleToDisplay, maxAngleToDisplay);
+        final clampedRollDeviation = rollDeviation.clamp(-maxAngleToDisplay, maxAngleToDisplay);
+
+        // Calculate display position (center is calibrated position)
+        final displayX = centerX + (clampedRollDeviation / maxAngleToDisplay) * maxRadius;
+        final displayY = centerY + (clampedPitchDeviation / maxAngleToDisplay) * maxRadius;
 
         return Column(
           children: [
             Text(
-              'HEAD ORIENTATION',
+              _isCalibrated ? 'DEVIATION FROM GOOD POSTURE' : 'HEAD ORIENTATION',
               style: TextStyle(
                 color: textColor.withOpacity(0.7),
                 fontSize: 12,
@@ -394,7 +527,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Background grid/box
+                  // Background grid
                   Container(
                     decoration: BoxDecoration(
                       border: Border.all(color: textColor.withOpacity(0.1)),
@@ -402,60 +535,140 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                     ),
                   ),
 
-                  // Good posture ring (e.g., ±15 degrees)
-                  Container(
-                    width: (2 * _goodPitchRange / maxAngleToDisplay) * maxRadius,
-                    height: (2 * _goodPitchRange / maxAngleToDisplay) * maxRadius,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.green.withOpacity(0.5), width: 1.5),
-                      shape: BoxShape.circle,
+                  // Posture zones (only show when calibrated)
+                  if (_isCalibrated) ...[
+                    // Bad posture zone (outer ring)
+                    Container(
+                      width: (2 * _badPitchThreshold / maxAngleToDisplay) * maxRadius,
+                      height: (2 * _badPitchThreshold / maxAngleToDisplay) * maxRadius,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.red.withOpacity(0.3), width: 1.0),
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                  // Warning posture ring (e.g., ±30 degrees)
-                  Container(
-                    width: (2 * _warningPitchRange / maxAngleToDisplay) * maxRadius,
-                    height: (2 * _warningPitchRange / maxAngleToDisplay) * maxRadius,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.orange.withOpacity(0.5), width: 1.5),
-                      shape: BoxShape.circle,
+                    // Warning posture zone (middle ring)
+                    Container(
+                      width: (2 * _warningPitchThreshold / maxAngleToDisplay) * maxRadius,
+                      height: (2 * _warningPitchThreshold / maxAngleToDisplay) * maxRadius,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.orange.withOpacity(0.5), width: 2.0),
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
+                    // Good posture zone (inner ring)
+                    Container(
+                      width: (2 * _goodPitchThreshold / maxAngleToDisplay) * maxRadius,
+                      height: (2 * _goodPitchThreshold / maxAngleToDisplay) * maxRadius,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.green.withOpacity(0.7), width: 3.0),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
 
-
-                  // Center crosshair (Horizontal)
+                  // Center crosshair (represents calibrated good posture)
                   Positioned(
                     top: centerY - 1,
                     left: 0,
                     right: 0,
-                    child: Container(height: 2, color: textColor.withOpacity(0.3)),
+                    child: Container(height: 2, color: Colors.blue.withOpacity(0.5)),
                   ),
-                  // Center crosshair (Vertical)
                   Positioned(
                     left: centerX - 1,
                     top: 0,
                     bottom: 0,
-                    child: Container(width: 2, color: textColor.withOpacity(0.3)),
+                    child: Container(width: 2, color: Colors.blue.withOpacity(0.5)),
+                  ),
+
+                  // Center point (calibrated position)
+                  Positioned(
+                    left: centerX - 8,
+                    top: centerY - 8,
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: const Icon(
+                        Icons.star,
+                        color: Colors.white,
+                        size: 8,
+                      ),
+                    ),
                   ),
 
                   // Head position indicator
                   Positioned(
-                    left: displayX - 20,
-                    top: displayY - 20,
+                    left: displayX - 25,
+                    top: displayY - 25,
                     child: Container(
-                      width: 40,
-                      height: 40,
+                      width: 50,
+                      height: 50,
                       decoration: BoxDecoration(
-                        color: _postureColor.withOpacity(0.5),
+                        color: _postureColor.withOpacity(0.6),
                         shape: BoxShape.circle,
-                        border: Border.all(color: _postureColor, width: 2),
+                        border: Border.all(color: _postureColor, width: 3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _postureColor.withOpacity(0.3),
+                            blurRadius: 8,
+                            spreadRadius: 2,
+                          ),
+                        ],
                       ),
                       child: Icon(
                         Icons.face,
                         color: textColor,
-                        size: 24,
+                        size: 30,
                       ),
                     ),
                   ),
+
+                  // Zone labels
+                  if (_isCalibrated) ...[
+                    // Good zone label
+                    Positioned(
+                      right: centerX + (_goodPitchThreshold / maxAngleToDisplay) * maxRadius + 10,
+                      top: centerY - 20,
+                      child: Text(
+                        'Excellent',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    // Warning zone label
+                    Positioned(
+                      right: centerX + (_warningPitchThreshold / maxAngleToDisplay) * maxRadius + 10,
+                      top: centerY - 20,
+                      child: Text(
+                        'Acceptable',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    // Bad zone label
+                    Positioned(
+                      right: centerX + (_badPitchThreshold / maxAngleToDisplay) * maxRadius + 10,
+                      top: centerY - 20,
+                      child: Text(
+                        'Poor',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -466,9 +679,24 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildOrientationReading("PITCH", "${_currentPitch.toStringAsFixed(1)}°", Colors.purpleAccent),
-                _buildOrientationReading("ROLL", "${_currentRoll.toStringAsFixed(1)}°", Colors.orangeAccent),
-                _buildOrientationReading("MOVEMENT", _isMoving ? "MOVING" : "STILL", Colors.cyanAccent),
+                _buildOrientationReading(
+                  "PITCH",
+                  "${_currentPitch.toStringAsFixed(1)}°",
+                  _isCalibrated ? "${(_currentPitch - _calibratedPitch).toStringAsFixed(1)}°" : "--",
+                  Colors.purpleAccent,
+                ),
+                _buildOrientationReading(
+                  "ROLL",
+                  "${_currentRoll.toStringAsFixed(1)}°",
+                  _isCalibrated ? "${(_currentRoll - _calibratedRoll).toStringAsFixed(1)}°" : "--",
+                  Colors.orangeAccent,
+                ),
+                _buildOrientationReading(
+                  "STATUS",
+                  _isCalibrated ? _postureStatus.toString().split('.').last.toUpperCase() : "UNCALIBRATED",
+                  _isCalibrated ? "" : "",
+                  _postureColor,
+                ),
               ],
             ),
           ],
@@ -477,7 +705,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
     );
   }
 
-  Widget _buildOrientationReading(String label, String value, Color color) {
+  Widget _buildOrientationReading(String label, String value, String deviation, Color color) {
     return Column(
       children: [
         Text(
@@ -498,44 +726,22 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
             fontFamily: 'Courier',
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _buildStatistic(String label, String value, Color color, Color textColor) {
-    return Column(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
+        if (deviation.isNotEmpty)
+          Text(
+            _isCalibrated ? "Δ: $deviation" : "",
+            style: TextStyle(
+              color: color.withOpacity(0.6),
+              fontSize: 10,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: textColor.withOpacity(0.7),
-            fontSize: 10,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
       ],
     );
   }
 
   @override
   void dispose() {
-    _statisticsTimer?.cancel();
+    // REMOVED: Statistics timer cancellation
+    _calibrationTimer?.cancel();
     bluetoothManager.removeAccelerometerCallback(_handleAccelerometerData);
     bluetoothManager.removeConnectionCallback(_handleConnectionChanged);
     super.dispose();
@@ -543,31 +749,25 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Access ThemeProvider state
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDarkMode = themeProvider.currentBrightness == Brightness.dark;
-
-    // Theme-aware colors
     final textColor = isDarkMode ? Colors.white : Colors.black;
     final containerColor = isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
-
     final isConnected = bluetoothManager.isConnected;
 
-    // ... (rest of score/percentage calculations remain the same)
     int postureScore = 100;
-    if (_postureStatus == PostureStatus.warning) postureScore = 70;
-    if (_postureStatus == PostureStatus.neutral) postureScore = 50;
-    if (_postureStatus == PostureStatus.bad) postureScore = 30;
-    int totalTime = _goodPostureTime + _warningPostureTime + _badPostureTime;
-    int goodPercentage = totalTime > 0 ? (_goodPostureTime * 100 ~/ totalTime) : 0;
-    int warningPercentage = totalTime > 0 ? (_warningPostureTime * 100 ~/ totalTime) : 0;
-    int badPercentage = totalTime > 0 ? (_badPostureTime * 100 ~/ totalTime) : 0;
-    if (!isConnected) {
+    if (_postureStatus == PostureStatus.warning) postureScore = 75;
+    if (_postureStatus == PostureStatus.neutral) postureScore = 60;
+    if (_postureStatus == PostureStatus.bad) postureScore = 40;
+    if (_postureStatus == PostureStatus.calibrating) postureScore = 0;
+
+    if (!isConnected || !_isCalibrated) {
       postureScore = 0;
       _postureColor = Colors.blueGrey;
-      _postureMessage = "Device disconnected. Please connect the OpenEarable.";
+      if (!_isCalibrated && isConnected) {
+        _postureMessage = "Please calibrate your posture first";
+      }
     }
-
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -575,20 +775,20 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
         title: const Text("Posture Monitor", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        // AppBar colors are now managed by the main MaterialApp theme
         actions: [
           IconButton(
-            icon: Icon(
-              _isCalibrated ? Icons.check_circle : Icons.straighten,
+            icon: _isCalibrating
+                ? const Icon(Icons.timer, color: Colors.blue)
+                : Icon(
+              _isCalibrated ? Icons.check_circle : Icons.calendar_today,
               color: isConnected ? Theme.of(context).iconTheme.color?.withOpacity(0.7) : Colors.grey,
             ),
-            onPressed: isConnected ? _calibratePosture : null,
-            tooltip: 'Calibrate Current Posture',
+            onPressed: isConnected && !_isCalibrating ? _startGuidedCalibration : null,
+            tooltip: _isCalibrated ? 'Recalibrate Posture' : 'Start Guided Calibration',
           ),
         ],
       ),
       body: Container(
-        // THEME CHANGE: Conditional Background Gradient
         decoration: BoxDecoration(
           gradient: isDarkMode
               ? const LinearGradient(
@@ -611,7 +811,6 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                 // Connection status
                 Container(
                   padding: const EdgeInsets.all(12),
-                  // THEME CHANGE: Container color
                   decoration: BoxDecoration(
                     color: containerColor,
                     borderRadius: BorderRadius.circular(12),
@@ -630,7 +829,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                       Expanded(
                         child: Text(
                           isConnected
-                              ? bluetoothManager.connectedDevice?.platformName ?? 'OpenEarable Device'
+                              ? bluetoothManager.connectedDevice?.name ?? bluetoothManager.connectedDevice?.id ?? 'OpenEarable Device'
                               : 'Disconnected',
                           style: TextStyle(
                             color: isConnected ? textColor : Colors.redAccent,
@@ -651,189 +850,128 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
 
                 const SizedBox(height: 20),
 
-                // Posture Status Card
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: _postureColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _postureColor.withOpacity(0.3)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _postureColor.withOpacity(0.2),
-                        blurRadius: 10,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Posture score
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'POSTURE SCORE',
-                            style: TextStyle(
-                              color: _postureColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _postureColor,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              isConnected ? '$postureScore/100' : 'N/A',
-                              style: const TextStyle(
-                                color: Colors.white, // Score text is always white on the colored chip
-                                fontSize: 14,
+                // Calibration view or posture status
+                if (_isCalibrating)
+                  _buildCalibrationView(context, textColor, containerColor)
+                else
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: _postureColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: _postureColor.withOpacity(0.3)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _postureColor.withOpacity(0.2),
+                          blurRadius: 10,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'POSTURE STATUS',
+                              style: TextStyle(
+                                color: _postureColor,
+                                fontSize: 12,
                                 fontWeight: FontWeight.bold,
+                                letterSpacing: 1.5,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Posture message
-                      Text(
-                        _postureMessage,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: textColor, // THEME CHANGE: Text color
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Posture icon
-                      Icon(
-                        isConnected ? _getPostureIcon() : Icons.bluetooth_disabled,
-                        color: _postureColor,
-                        size: 60,
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Posture tips or Connection prompt
-                      if (!isConnected)
-                        _buildConnectionPrompt(context)
-                      else if (_postureStatus == PostureStatus.bad)
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.red.withOpacity(0.2)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.lightbulb_outline, color: Colors.orange, size: 20),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  'Tip: Keep your ears aligned with your shoulders',
-                                  style: TextStyle(
-                                    color: textColor.withOpacity(0.9), // THEME CHANGE: Text color
-                                    fontSize: 12,
-                                  ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _postureColor,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                isConnected && _isCalibrated ? '$postureScore/100' : 'N/A',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ],
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        Text(
+                          _postureMessage,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                    ],
+
+                        const SizedBox(height: 16),
+
+                        Icon(
+                          isConnected ? _getPostureIcon() : Icons.bluetooth_disabled,
+                          color: _postureColor,
+                          size: 60,
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        if (!isConnected)
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/deviceConnect');
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                            ),
+                            icon: const Icon(Icons.bluetooth_searching, color: Colors.white),
+                            label: const Text(
+                              "CONNECT DEVICE",
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                          )
+                        else if (!_isCalibrated)
+                          ElevatedButton.icon(
+                            onPressed: _startGuidedCalibration,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                            ),
+                            icon: const Icon(Icons.auto_awesome, color: Colors.white),
+                            label: const Text(
+                              "START GUIDED CALIBRATION",
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
 
                 const SizedBox(height: 20),
 
-                // Posture visualization
+                // Visualization
                 Container(
-                  height: 350,
+                  height: 400, // Slightly increased height for better visibility
                   padding: const EdgeInsets.all(20),
-                  // THEME CHANGE: Container color and border
                   decoration: BoxDecoration(
                     color: containerColor,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: textColor.withOpacity(0.1)),
                   ),
-                  child: isConnected
-                      ? _buildConnectedVisualization(context, textColor, containerColor)
-                  // Pass theme colors to disconnected view
-                      : _buildDisconnectedView(context, textColor, containerColor),
+                  child: !isConnected
+                      ? _buildDisconnectedView(context, textColor, containerColor)
+                      : _buildConnectedVisualization(context, textColor, containerColor),
                 ),
 
-                const SizedBox(height: 20),
-
-                // Statistics
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  // THEME CHANGE: Container color
-                  decoration: BoxDecoration(
-                    color: containerColor,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'SESSION STATISTICS',
-                        style: TextStyle(
-                          color: textColor.withOpacity(0.7),
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      if (isConnected)
-                        Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _buildStatistic("Good", "$goodPercentage%", Colors.green, textColor),
-                                _buildStatistic("Warning/Neutral", "$warningPercentage%", Colors.orange, textColor),
-                                _buildStatistic("Poor", "$badPercentage%", Colors.red, textColor),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            // Progress bar
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: SizedBox(
-                                height: 8,
-                                child: totalTime > 0
-                                    ? Row(
-                                  children: [
-                                    Expanded(flex: _goodPostureTime, child: Container(color: Colors.green)),
-                                    Expanded(flex: _warningPostureTime, child: Container(color: Colors.orange)),
-                                    Expanded(flex: _badPostureTime, child: Container(color: Colors.red)),
-                                  ],
-                                )
-                                    : Container(color: textColor.withOpacity(0.1)), // THEME CHANGE: Inactive bar color
-                              ),
-                            ),
-                          ],
-                        )
-                      else
-                        Text(
-                          "Connect device to track session statistics.",
-                          style: TextStyle(color: textColor.withOpacity(0.54), fontSize: 14),
-                        ),
-                    ],
-                  ),
-                ),
+                // REMOVED: Session Statistics section
                 const SizedBox(height: 10),
               ],
             ),

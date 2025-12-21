@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../provider/theme_provider.dart';
-import '../bluetooth/bluetooth_manager.dart';
+import '../bluetooth/open_earable_manager.dart';
 import 'dart:math';
 
 class LiveDataScreen extends StatefulWidget {
@@ -16,10 +16,6 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
   final BluetoothManager bluetoothManager = BluetoothManager.instance;
 
   // Local state
-  List<double> accelerometerHistoryX = [];
-  List<double> accelerometerHistoryY = [];
-  List<double> accelerometerHistoryZ = [];
-  int maxHistoryPoints = 50;
   String selectedSensor = 'accelerometer';
   Map<String, double> accelerometerData = {'x': 0.0, 'y': 0.0, 'z': 0.0};
   String sensorData = '';
@@ -28,10 +24,19 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
   @override
   void initState() {
     super.initState();
+    print('[LiveDataScreen] initState: registering callbacks');
     bluetoothManager.addConnectionCallback(_handleConnectionChanged);
     bluetoothManager.addAccelerometerCallback(_handleAccelerometerData);
     bluetoothManager.addSensorDataCallback(_handleSensorData);
     isConnected = bluetoothManager.isConnected;
+    print('[LiveDataScreen] initState: isConnected=$isConnected');
+
+    // If already connected, ensure sensors are subscribed (helps recover on hot restart)
+    if (isConnected) {
+      bluetoothManager.ensureSensorSubscriptions().catchError((e) {
+        print('ensureSensorSubscriptions error: $e');
+      });
+    }
   }
 
   void _handleConnectionChanged(bool connected) {
@@ -39,15 +44,27 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
       setState(() {
         isConnected = connected;
       });
+
+      if (connected) {
+        // Try to ensure subscriptions are in place when a connection is established
+        bluetoothManager.ensureSensorSubscriptions().catchError((e) {
+          print('ensureSensorSubscriptions error (on connect): $e');
+        });
+      }
     }
   }
 
   void _handleAccelerometerData(Map<String, double> data) {
+    print('[LiveDataScreen] _handleAccelerometerData called: x=${data['x']?.toStringAsFixed(2)} y=${data['y']?.toStringAsFixed(2)} z=${data['z']?.toStringAsFixed(2)}');
+    print('[LiveDataScreen] mounted=$mounted');
+
     if (mounted) {
       setState(() {
         accelerometerData = data;
-        _updateHistory(data);
+        print('[LiveDataScreen] setState called, accelerometerData updated');
       });
+    } else {
+      print('[LiveDataScreen] ⚠️ Widget not mounted, skipping setState');
     }
   }
 
@@ -56,18 +73,6 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
       setState(() {
         sensorData = data;
       });
-    }
-  }
-
-  void _updateHistory(Map<String, double> data) {
-    accelerometerHistoryX.add(data['x'] ?? 0.0);
-    accelerometerHistoryY.add(data['y'] ?? 0.0);
-    accelerometerHistoryZ.add(data['z'] ?? 0.0);
-
-    if (accelerometerHistoryX.length > maxHistoryPoints) {
-      accelerometerHistoryX.removeAt(0);
-      accelerometerHistoryY.removeAt(0);
-      accelerometerHistoryZ.removeAt(0);
     }
   }
 
@@ -101,7 +106,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
           Text(
             value,
             style: TextStyle(
-              color: dataTextColor, // THEME CHANGE
+              color: dataTextColor,
               fontSize: 18,
               fontWeight: FontWeight.bold,
               fontFamily: 'Courier',
@@ -138,7 +143,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
           child: Container(
             height: 6,
             decoration: BoxDecoration(
-              color: containerColor, // THEME CHANGE
+              color: containerColor,
               borderRadius: BorderRadius.circular(3),
             ),
             child: FractionallySizedBox(
@@ -169,31 +174,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
     );
   }
 
-  Widget _buildChartLegend(String label, Color color) {
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // --- Utility Calculations (Unchanged) ---
+  // --- Utility Calculations ---
   double _calculateMagnitude(Map<String, double> data) {
     final x = data['x'] ?? 0.0;
     final y = data['y'] ?? 0.0;
@@ -232,17 +213,14 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
     final containerColor = isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
     final dataTextColor = isDarkMode ? Colors.white : Colors.black;
 
-
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text("Telemetry", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        // Icon and text colors are now handled by AppBarTheme in theme_provider.dart
       ),
       body: Container(
-        // THEME CHANGE: Conditional Background Gradient
         decoration: BoxDecoration(
           gradient: isDarkMode
               ? const LinearGradient(
@@ -265,7 +243,6 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                 // Connection status
                 Container(
                   padding: const EdgeInsets.all(12),
-                  // THEME CHANGE: Container color
                   decoration: BoxDecoration(
                     color: containerColor,
                     borderRadius: BorderRadius.circular(12),
@@ -283,15 +260,15 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          bluetoothManager.connectedDevice?.platformName ?? 'OpenEarable Device',
+                          bluetoothManager.connectedDevice?.name ?? bluetoothManager.connectedDevice?.id ?? 'OpenEarable Device',
                           style: TextStyle(
-                            color: textColor, // THEME CHANGE: Text color
+                            color: textColor,
                             fontSize: 14,
                           ),
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.arrow_back, color: textColor.withOpacity(0.7)), // THEME CHANGE: Icon color
+                        icon: Icon(Icons.arrow_back, color: textColor.withOpacity(0.7)),
                         onPressed: () => Navigator.pop(context),
                         tooltip: 'Back to Device List',
                       ),
@@ -341,7 +318,6 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                     Expanded(
                       child: Container(
                         padding: const EdgeInsets.all(16),
-                        // THEME CHANGE: Container color and border
                         decoration: BoxDecoration(
                           color: containerColor,
                           borderRadius: BorderRadius.circular(16),
@@ -352,7 +328,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                             Text(
                               'MAGNITUDE',
                               style: TextStyle(
-                                color: textColor.withOpacity(0.7), // THEME CHANGE: Text color
+                                color: textColor.withOpacity(0.7),
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -361,7 +337,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                             Text(
                               _calculateMagnitude(accelerometerData).toStringAsFixed(3),
                               style: TextStyle(
-                                color: dataTextColor, // THEME CHANGE: Text color
+                                color: dataTextColor,
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
                                 fontFamily: 'Courier',
@@ -370,7 +346,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                             Text(
                               'g',
                               style: TextStyle(
-                                color: textColor.withOpacity(0.5), // THEME CHANGE: Text color
+                                color: textColor.withOpacity(0.5),
                                 fontSize: 12,
                               ),
                             ),
@@ -385,7 +361,6 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                     Expanded(
                       child: Container(
                         padding: const EdgeInsets.all(16),
-                        // THEME CHANGE: Container color and border
                         decoration: BoxDecoration(
                           color: containerColor,
                           borderRadius: BorderRadius.circular(16),
@@ -396,7 +371,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                             Text(
                               'ORIENTATION',
                               style: TextStyle(
-                                color: textColor.withOpacity(0.7), // THEME CHANGE: Text color
+                                color: textColor.withOpacity(0.7),
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -432,70 +407,63 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                   ],
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 15),
 
-                // 3. Main Chart Area
-                Text(
-                  "REAL-TIME PLOT",
-                  style: TextStyle(
-                    color: textColor.withOpacity(0.54), // THEME CHANGE: Text color
-                    fontSize: 12,
-                    letterSpacing: 2,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Expanded(
+                // Additional Data Display
+                Center(
                   child: Container(
-                    padding: const EdgeInsets.all(20),
-                    // THEME CHANGE: Container color and border
+                    padding: const EdgeInsets.all(16),
+                    width: 200,
                     decoration: BoxDecoration(
                       color: containerColor,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: textColor.withOpacity(0.1)),
                     ),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center, // Changed from start to center
                       children: [
-                        // Chart legend
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildChartLegend('X', Colors.redAccent),
-                            const SizedBox(width: 20),
-                            _buildChartLegend('Y', Colors.greenAccent),
-                            const SizedBox(width: 20),
-                            _buildChartLegend('Z', Colors.blueAccent),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Chart area
-                        Expanded(
-                          child: accelerometerHistoryX.isNotEmpty
-                              ? CustomPaint(
-                            painter: ChartPainter(
-                              dataX: accelerometerHistoryX,
-                              dataY: accelerometerHistoryY,
-                              dataZ: accelerometerHistoryZ,
-                              colorX: Colors.redAccent,
-                              colorY: Colors.greenAccent,
-                              colorZ: Colors.blueAccent,
-                              gridColor: textColor.withOpacity(0.08), // THEME CHANGE: Grid color
-                            ),
-                          )
-                              : Center(
-                            child: Text(
-                              "STREAMING DATA...",
-                              style: TextStyle(
-                                color: textColor.withOpacity(0.3), // THEME CHANGE: Text color
-                                fontFamily: "Courier",
-                              ),
-                            ),
+                        Text(
+                          'SENSOR DATA',
+                          style: TextStyle(
+                            color: textColor.withOpacity(0.7),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center, // Also center the row
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.center, // Center column content
+                              children: [
+                                Text(
+                                  'Device Status',
+                                  style: TextStyle(
+                                    color: textColor.withOpacity(0.6),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  isConnected ? 'Connected' : 'Disconnected',
+                                  style: TextStyle(
+                                    color: isConnected ? Colors.green : Colors.red,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
+                )
+                ,
+                const Expanded(
+                  child: SizedBox(),
                 ),
               ],
             ),
@@ -504,82 +472,4 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
       ),
     );
   }
-}
-
-// --- Chart Painter (Modified) ---
-
-class ChartPainter extends CustomPainter {
-  final List<double> dataX;
-  final List<double> dataY;
-  final List<double> dataZ;
-  final Color colorX;
-  final Color colorY;
-  final Color colorZ;
-  final Color gridColor; // ADDED: Theme-aware grid color
-
-  ChartPainter({
-    required this.dataX,
-    required this.dataY,
-    required this.dataZ,
-    required this.colorX,
-    required this.colorY,
-    required this.colorZ,
-    required this.gridColor, // ADDED
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = gridColor // THEME CHANGE: Use dynamic grid color
-      ..strokeWidth = 1;
-
-    // Draw grid lines
-    for (var i = 0; i <= 4; i++) {
-      final y = size.height * i / 4;
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        gridPaint,
-      );
-    }
-
-    // Find min and max values for scaling
-    final allData = [...dataX, ...dataY, ...dataZ];
-    final maxVal = allData.isNotEmpty ? allData.map((e) => e.abs()).reduce(max) : 1.0;
-    final minVal = -maxVal;
-
-    // Draw X, Y, Z lines
-    _drawLine(canvas, size, dataX, colorX, minVal, maxVal);
-    _drawLine(canvas, size, dataY, colorY, minVal, maxVal);
-    _drawLine(canvas, size, dataZ, colorZ, minVal, maxVal);
-  }
-
-  void _drawLine(Canvas canvas, Size size, List<double> data, Color color, double minVal, double maxVal) {
-    if (data.length < 2) return;
-
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    final path = Path();
-    final valueRange = maxVal - minVal;
-
-    for (var i = 0; i < data.length; i++) {
-      final x = size.width * i / (data.length - 1);
-      final normalizedValue = (data[i] - minVal) / valueRange;
-      final y = size.height * (1 - normalizedValue);
-
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

@@ -73,7 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         secondary: Icon(icon, color: textColor?.withOpacity(0.7)),
         title: Text(title, style: TextStyle(color: textColor)),
         value: value,
-        activeColor: Colors.deepPurpleAccent,
+        activeThumbColor: Colors.deepPurpleAccent,
         onChanged: onChanged,
       ),
     );

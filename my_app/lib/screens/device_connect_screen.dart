@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:provider/provider.dart'; // REQUIRED for theming
+import 'package:provider/provider.dart';
+import 'package:open_earable_flutter/open_earable_flutter.dart';
 import '../provider/theme_provider.dart'; // REQUIRED for theming
-import '../bluetooth/bluetooth_manager.dart';
+import '../bluetooth/open_earable_manager.dart';
 import 'live_data_screen.dart';
 
 class DeviceConnectScreen extends StatefulWidget {
@@ -17,16 +17,15 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
   // Use singleton instance
   final BluetoothManager bluetoothManager = BluetoothManager.instance;
 
-  List<ScanResult> devices = [];
+  List<DiscoveredDevice> devices = [];
   bool isScanning = false;
   bool isConnected = false;
   String sensorData = '';
-  BluetoothDevice? connectedDevice;
+  DiscoveredDevice? connectedDevice;
 
   @override
   void initState() {
     super.initState();
-    _checkBluetoothState();
 
     // ========== SET UP CALLBACKS ==========
     bluetoothManager.addConnectionCallback(_handleConnectionChanged);
@@ -58,37 +57,8 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
     }
   }
 
-  Future<void> _checkBluetoothState() async {
-    final state = await FlutterBluePlus.adapterState.first;
-    if (state != BluetoothAdapterState.on && mounted) {
-      _showBluetoothOffDialog();
-    }
-  }
-
-  void _showBluetoothOffDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Bluetooth is Off'),
-        content: const Text('Please enable Bluetooth to scan for OpenEarable devices.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// Starts scanning and updates the devices list with filtered OpenEarable devices
   Future<void> startScan() async {
-    final state = await FlutterBluePlus.adapterState.first;
-    if (state != BluetoothAdapterState.on && mounted) {
-      _showBluetoothOffDialog();
-      return;
-    }
-
     if (isScanning) return;
 
     setState(() => isScanning = true);
@@ -113,14 +83,27 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
     }
   }
 
+  // 💡 NEW: Extracted common data stream setup logic (now includes gyroscope)
+  Future<void> _startDataStream() async {
+    print("Starting data stream setup...");
+
+    // Configure device to enable both sensors
+    await bluetoothManager.configureSensors(accel: true, gyro: true, mag: false);
+
+
+    print("Data stream setup complete.");
+  }
+
+
   /// Connect to a device and set up sensor data streaming
-  Future<void> connectToDevice(BluetoothDevice device) async {
+  Future<void> connectToDevice(DiscoveredDevice device) async {
     try {
       // Show connecting indicator
       if (mounted) {
+        final label = device.name.isNotEmpty ? device.name : device.id;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Connecting to ${device.platformName}...'),
+            content: Text('Connecting to ${label}...'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -129,16 +112,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
       final connected = await bluetoothManager.connectToDevice(device);
 
       if (connected) {
-        // --- START STREAMING LOGIC ---
-        // NOTE: This part MUST be updated with the simpler startStreaming()
-        // method once it is added to BluetoothManager, but for now we use the old logic:
-        await bluetoothManager.configureSensors(accel: true, gyro: true);
-        await bluetoothManager.setSamplingRate(50);
-        await bluetoothManager.subscribeToSensor(
-          BluetoothManager.accelerometerCharUuid,
-          bluetoothManager.parseAccelerometerData, // Use parser to trigger callbacks
-        );
-        // --- END STREAMING LOGIC ---
+        await _startDataStream(); // Use the new extracted method
 
         if (mounted) {
           // Get battery level
@@ -197,13 +171,11 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
 
   // --- Widget Builders (Updated for theming) ---
 
-  Widget _buildDeviceTile(ScanResult result, bool isDarkMode) {
-    final deviceName = result.device.platformName.isNotEmpty
-        ? result.device.platformName
-        : result.device.remoteId.toString();
+  Widget _buildDeviceTile(DiscoveredDevice result, bool isDarkMode) {
+    final deviceName = result.name.isNotEmpty ? result.name : result.id;
 
     final isAlreadyConnected = isConnected &&
-        connectedDevice?.remoteId.toString() == result.device.remoteId.toString();
+        bluetoothManager.connectedDevice?.id == result.id;
 
     final textColor = isDarkMode ? Colors.white : Colors.black;
     final subtitleColor = textColor.withOpacity(0.5);
@@ -249,7 +221,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
           ),
         ),
         title: Text(
-          deviceName,
+          deviceName.toString(),
           style: TextStyle(
             color: textColor,
             fontWeight: FontWeight.w600,
@@ -278,7 +250,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
         )
             : TextButton(
           onPressed: () async {
-            await connectToDevice(result.device);
+            await connectToDevice(result);
           },
           style: TextButton.styleFrom(
             backgroundColor: Colors.green.withOpacity(0.2),
@@ -304,7 +276,6 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
   @override
   Widget build(BuildContext context) {
     // Access ThemeProvider state
-    // NOTE: This assumes ThemeProvider is correctly set up using the Provider package
     final isDarkMode = Provider.of<ThemeProvider>(context).currentBrightness == Brightness.dark;
 
     // Theme-aware colors
@@ -385,7 +356,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              connectedDevice!.platformName,
+                              connectedDevice!.name,
                               style: TextStyle(
                                 color: textColor,
                                 fontWeight: FontWeight.bold,
