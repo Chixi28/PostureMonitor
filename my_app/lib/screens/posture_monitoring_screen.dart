@@ -498,19 +498,15 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
         final centerX = constraints.maxWidth / 2;
         final centerY = constraints.maxHeight / 2;
         final maxRadius = (min(constraints.maxWidth, constraints.maxHeight) / 2) * 0.8;
-        const maxAngleToDisplay = 45.0;
 
-        // Calculate deviation from calibrated position
         double pitchDeviation = _isCalibrated ? (_currentPitch - _calibratedPitch) : _currentPitch;
         double rollDeviation = _isCalibrated ? (_currentRoll - _calibratedRoll) : _currentRoll;
 
-        // Clamp deviations for display
-        final clampedPitchDeviation = pitchDeviation.clamp(-maxAngleToDisplay, maxAngleToDisplay);
-        final clampedRollDeviation = rollDeviation.clamp(-maxAngleToDisplay, maxAngleToDisplay);
+        final clampedPitchDeviation = pitchDeviation.clamp(-45.0, 45.0);
+        final clampedRollDeviation = rollDeviation.clamp(-45.0, 45.0);
 
-        // Calculate display position (center is calibrated position)
-        final displayX = centerX + (clampedRollDeviation / maxAngleToDisplay) * maxRadius;
-        final displayY = centerY + (clampedPitchDeviation / maxAngleToDisplay) * maxRadius;
+        final displayX = centerX + (clampedRollDeviation / 45.0) * maxRadius;
+        final displayY = centerY + (clampedPitchDeviation / 45.0) * maxRadius;
 
         return Column(
           children: [
@@ -522,7 +518,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 0),
             Expanded(
               child: Stack(
                 alignment: Alignment.center,
@@ -535,38 +531,50 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                     ),
                   ),
 
-                  // Posture zones (only show when calibrated)
+                  // Concentric posture zones, properly centered
                   if (_isCalibrated) ...[
                     // Bad posture zone (outer ring)
-                    Container(
-                      width: (2 * _badPitchThreshold / maxAngleToDisplay) * maxRadius,
-                      height: (2 * _badPitchThreshold / maxAngleToDisplay) * maxRadius,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.red.withOpacity(0.3), width: 1.0),
-                        shape: BoxShape.circle,
+                    Positioned(
+                      left: centerX - ( (2 * _badPitchThreshold / 45.0) * maxRadius) / 2,
+                      top: centerY - ( (2 * _badPitchThreshold / 45.0) * maxRadius) / 2,
+                      child: Container(
+                        width: (2 * _badPitchThreshold / 45.0) * maxRadius,
+                        height: (2 * _badPitchThreshold / 45.0) * maxRadius,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.red.withOpacity(0.5), width: 3.0),
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
                     // Warning posture zone (middle ring)
-                    Container(
-                      width: (2 * _warningPitchThreshold / maxAngleToDisplay) * maxRadius,
-                      height: (2 * _warningPitchThreshold / maxAngleToDisplay) * maxRadius,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.orange.withOpacity(0.5), width: 2.0),
-                        shape: BoxShape.circle,
+                    Positioned(
+                      left: centerX - ( (2 * _warningPitchThreshold / 45.0) * maxRadius) / 2,
+                      top: centerY - ( (2 * _warningPitchThreshold / 45.0) * maxRadius) / 2,
+                      child: Container(
+                        width: (2 * _warningPitchThreshold / 45.0) * maxRadius,
+                        height: (2 * _warningPitchThreshold / 45.0) * maxRadius,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.orange.withOpacity(0.5), width: 3.0),
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
                     // Good posture zone (inner ring)
-                    Container(
-                      width: (2 * _goodPitchThreshold / maxAngleToDisplay) * maxRadius,
-                      height: (2 * _goodPitchThreshold / maxAngleToDisplay) * maxRadius,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.green.withOpacity(0.7), width: 3.0),
-                        shape: BoxShape.circle,
+                    Positioned(
+                      left: centerX - ( (2 * _goodPitchThreshold / 45.0) * maxRadius) / 2,
+                      top: centerY - ( (2 * _goodPitchThreshold / 45.0) * maxRadius) / 2,
+                      child: Container(
+                        width: (2 * _goodPitchThreshold / 45.0) * maxRadius,
+                        height: (2 * _goodPitchThreshold / 45.0) * maxRadius,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.green.withOpacity(0.5), width: 3.0),
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
                   ],
 
-                  // Center crosshair (represents calibrated good posture)
+                  // Center crosshair
                   Positioned(
                     top: centerY - 1,
                     left: 0,
@@ -580,7 +588,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                     child: Container(width: 2, color: Colors.blue.withOpacity(0.5)),
                   ),
 
-                  // Center point (calibrated position)
+                  // Center point
                   Positioned(
                     left: centerX - 8,
                     top: centerY - 8,
@@ -626,49 +634,6 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                       ),
                     ),
                   ),
-
-                  // Zone labels
-                  if (_isCalibrated) ...[
-                    // Good zone label
-                    Positioned(
-                      right: centerX + (_goodPitchThreshold / maxAngleToDisplay) * maxRadius + 10,
-                      top: centerY - 20,
-                      child: Text(
-                        'Excellent',
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    // Warning zone label
-                    Positioned(
-                      right: centerX + (_warningPitchThreshold / maxAngleToDisplay) * maxRadius + 10,
-                      top: centerY - 20,
-                      child: Text(
-                        'Acceptable',
-                        style: TextStyle(
-                          color: Colors.orange,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    // Bad zone label
-                    Positioned(
-                      right: centerX + (_badPitchThreshold / maxAngleToDisplay) * maxRadius + 10,
-                      top: centerY - 20,
-                      child: Text(
-                        'Poor',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
