@@ -4,6 +4,22 @@ import '../provider/theme_provider.dart';
 import '../bluetooth/open_earable_manager.dart';
 import 'dart:math';
 
+/// Live Data Screen
+///
+/// This file implements a Flutter screen for real-time telemetry and sensor data visualization
+/// from an OpenEarable device. It displays live accelerometer readings, orientation (pitch, roll, yaw),
+/// and connection status, providing a responsive and theme-aware UI for device monitoring.
+///
+/// Features:
+/// - Connects to a Bluetooth device (OpenEarable) to receive live sensor data.
+/// - Displays accelerometer X, Y, Z values and their magnitude.
+/// - Visualizes orientation (pitch, roll, yaw) in real time.
+/// - Shows device connection status and sensor data updates.
+/// - Adapts UI to light/dark themes using Provider.
+
+/// Main screen widget for live telemetry and sensor data.
+///
+/// Displays accelerometer, orientation, and connection status in real time.
 class LiveDataScreen extends StatefulWidget {
   const LiveDataScreen({super.key});
 
@@ -11,8 +27,11 @@ class LiveDataScreen extends StatefulWidget {
   State<LiveDataScreen> createState() => _LiveDataScreenState();
 }
 
+/// State class for [LiveDataScreen].
+///
+/// Handles sensor data callbacks, connection state, and UI updates.
 class _LiveDataScreenState extends State<LiveDataScreen> {
-  // Use singleton instance
+  /// Singleton instance for managing Bluetooth and sensor data.
   final BluetoothManager bluetoothManager = BluetoothManager.instance;
 
   // Local state
@@ -24,17 +43,14 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
   @override
   void initState() {
     super.initState();
-    print('[LiveDataScreen] initState: registering callbacks');
     bluetoothManager.addConnectionCallback(_handleConnectionChanged);
     bluetoothManager.addAccelerometerCallback(_handleAccelerometerData);
     bluetoothManager.addSensorDataCallback(_handleSensorData);
     isConnected = bluetoothManager.isConnected;
-    print('[LiveDataScreen] initState: isConnected=$isConnected');
 
     // If already connected, ensure sensors are subscribed (helps recover on hot restart)
     if (isConnected) {
       bluetoothManager.ensureSensorSubscriptions().catchError((e) {
-        print('ensureSensorSubscriptions error: $e');
       });
     }
   }
@@ -48,23 +64,18 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
       if (connected) {
         // Try to ensure subscriptions are in place when a connection is established
         bluetoothManager.ensureSensorSubscriptions().catchError((e) {
-          print('ensureSensorSubscriptions error (on connect): $e');
         });
       }
     }
   }
 
   void _handleAccelerometerData(Map<String, double> data) {
-    print('[LiveDataScreen] _handleAccelerometerData called: x=${data['x']?.toStringAsFixed(2)} y=${data['y']?.toStringAsFixed(2)} z=${data['z']?.toStringAsFixed(2)}');
-    print('[LiveDataScreen] mounted=$mounted');
 
     if (mounted) {
       setState(() {
         accelerometerData = data;
-        print('[LiveDataScreen] setState called, accelerometerData updated');
       });
     } else {
-      print('[LiveDataScreen] ⚠️ Widget not mounted, skipping setState');
     }
   }
 
@@ -92,15 +103,15 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
       width: 100,
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
           Text(
             label,
-            style: TextStyle(color: color.withOpacity(0.8), fontSize: 10, fontWeight: FontWeight.bold),
+            style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 10, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
@@ -116,7 +127,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
           Text(
             unit,
             style: TextStyle(
-              color: color.withOpacity(0.6),
+              color: color.withValues(alpha: 0.6),
               fontSize: 10,
             ),
           ),
@@ -133,7 +144,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
           child: Text(
             label,
             style: TextStyle(
-              color: color.withOpacity(0.8),
+              color: color.withValues(alpha: 0.8),
               fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
@@ -210,7 +221,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
 
     // Theme-aware colors
     final textColor = isDarkMode ? Colors.white : Colors.black;
-    final containerColor = isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
+    final containerColor = isDarkMode ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05);
     final dataTextColor = isDarkMode ? Colors.white : Colors.black;
 
     return Scaffold(
@@ -268,7 +279,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.arrow_back, color: textColor.withOpacity(0.7)),
+                        icon: Icon(Icons.arrow_back, color: textColor.withValues(alpha: 0.7)),
                         onPressed: () => Navigator.pop(context),
                         tooltip: 'Back to Device List',
                       ),
@@ -321,14 +332,14 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                         decoration: BoxDecoration(
                           color: containerColor,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: textColor.withOpacity(0.1)),
+                          border: Border.all(color: textColor.withValues(alpha: 0.1)),
                         ),
                         child: Column(
                           children: [
                             Text(
                               'MAGNITUDE',
                               style: TextStyle(
-                                color: textColor.withOpacity(0.7),
+                                color: textColor.withValues(alpha: 0.7),
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -346,7 +357,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                             Text(
                               'g',
                               style: TextStyle(
-                                color: textColor.withOpacity(0.5),
+                                color: textColor.withValues(alpha: 0.5),
                                 fontSize: 12,
                               ),
                             ),
@@ -364,14 +375,14 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                         decoration: BoxDecoration(
                           color: containerColor,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: textColor.withOpacity(0.1)),
+                          border: Border.all(color: textColor.withValues(alpha: 0.1)),
                         ),
                         child: Column(
                           children: [
                             Text(
                               'ORIENTATION',
                               style: TextStyle(
-                                color: textColor.withOpacity(0.7),
+                                color: textColor.withValues(alpha: 0.7),
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -417,7 +428,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                     decoration: BoxDecoration(
                       color: containerColor,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: textColor.withOpacity(0.1)),
+                      border: Border.all(color: textColor.withValues(alpha: 0.1)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center, // Changed from start to center
@@ -425,7 +436,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                         Text(
                           'SENSOR DATA',
                           style: TextStyle(
-                            color: textColor.withOpacity(0.7),
+                            color: textColor.withValues(alpha: 0.7),
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                           ),
@@ -440,7 +451,7 @@ class _LiveDataScreenState extends State<LiveDataScreen> {
                                 Text(
                                   'Device Status',
                                   style: TextStyle(
-                                    color: textColor.withOpacity(0.6),
+                                    color: textColor.withValues(alpha: 0.6),
                                     fontSize: 12,
                                   ),
                                 ),

@@ -5,21 +5,33 @@ typedef ConnectionCallback = void Function(bool connected);
 typedef AccelerometerCallback = void Function(Map<String, double> accel);
 typedef SensorDataCallback = void Function(String data);
 
+/// Bluetooth Manager (OpenEarable)
+///
+/// This file implements a singleton BluetoothManager class that wraps the open_earable_flutter package.
+/// It provides a simplified API for scanning, connecting, and streaming sensor data from OpenEarable devices.
+///
+/// Features:
+/// - Scans for nearby OpenEarable Bluetooth devices.
+/// - Connects to and disconnects from devices.
+/// - Streams accelerometer and sensor data to registered callbacks.
+/// - Handles connection state and device information.
+/// - Exposes a stream for IMU data and manages callback registration.
+
 /// BluetoothManager: a thin wrapper around `open_earable_flutter` that
 /// exposes the simplified API the app expects (singleton, callbacks,
 /// scan/connect/disconnect, and accelerometer/sensor callbacks).
+///
+/// Handles device discovery, connection, sensor configuration, and data streaming.
 class BluetoothManager {
   BluetoothManager._internal() {
     _wearableManager = WearableManager();
     _setupListeners();
-    print('✅ BluetoothManager initialized (open_earable_flutter)');
   }
 
   // ---------- Debug helpers ----------
   void _log(String s) {
     // Keep logs concise and centralized
     try {
-      print('[BluetoothManager] $s');
     } catch (_) {}
   }
 
@@ -46,7 +58,7 @@ class BluetoothManager {
   // ---------------- Helper Methods ----------------
   
   /// Extract accelerometer data from SensorDoubleValue
-  /// SensorDoubleValue has a 'values' property which is a List<double>
+  /// SensorDoubleValue has a 'values' property which is a List'<'double'>'
   /// The values are in order: [X, Y, Z] based on axisNames
   Map<String, double>? _extractAccelerometerData(dynamic dataObj) {
     try {
@@ -116,6 +128,7 @@ class BluetoothManager {
           for (final cb in List<ConnectionCallback>.from(_connectionCallbacks)) {
             try {
               cb(false);
+            // ignore: empty_catches
             } catch (e) {}
           }
         });
@@ -193,7 +206,6 @@ class BluetoothManager {
                   }
                 } catch (e) {
                   _log('IMU sample handler error: $e');
-                  print('Stack trace: ${StackTrace.current}');
                 }
               }, onError: (e) {
                 _log('imu sensorStream error: $e');
@@ -203,7 +215,6 @@ class BluetoothManager {
               _log('✅ IMU configured and streaming');
             } catch (e) { 
               _log('Failed to listen to imuSensor.sensorStream: $e');
-              print('Stack trace: ${StackTrace.current}');
             }
           }
         }
@@ -277,10 +288,11 @@ class BluetoothManager {
       for (final cb in List<ConnectionCallback>.from(_connectionCallbacks)) {
         try {
           cb(false);
+        // ignore: empty_catches
         } catch (e) {}
       }
+    // ignore: empty_catches
     } catch (e) {
-      print('Disconnect error: $e');
     }
   }
 
@@ -320,7 +332,7 @@ class BluetoothManager {
         // Find an IMU-like sensor safely without using firstWhere/orElse (avoids runtime type mismatch)
         dynamic imuSensor;
         try {
-          final sensorsList = sensors as List;
+          final sensorsList = sensors;
           for (var s in sensorsList) {
             try {
               if ((s as dynamic).sensorId == 0) {
@@ -354,7 +366,6 @@ class BluetoothManager {
                 }
               } catch (e) {
                 _log('ensureSensorSubscriptions: sample handler error: $e');
-                print('Stack trace: ${StackTrace.current}');
               }
             }, onError: (e) { _log('ensureSensorSubscriptions: sensorStream error: $e'); });
 
@@ -362,7 +373,6 @@ class BluetoothManager {
             _log('ensureSensorSubscriptions: subscribed to IMU');
           } catch (e) {
             _log('ensureSensorSubscriptions: failed to subscribe $e');
-            print('Stack trace: ${StackTrace.current}');
           }
         } else {
           _log('ensureSensorSubscriptions: no IMU-like sensor found');

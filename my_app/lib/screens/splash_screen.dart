@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
+/// Splash screen displayed during application startup.
+///
+/// This screen presents an animated logo with:
+/// - A pulsing central icon
+/// - A continuously rotating scanner ring
+/// - Fading introductory text
+/// - A persistent progress indicator
+///
+/// After the animation sequence completes, the user is automatically
+/// navigated to the home screen.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -8,38 +18,47 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
+/// State implementation for [SplashScreen].
+///
+/// Uses two independent animation controllers:
+/// - One controller for the main entrance animations (scale + fade)
+/// - One controller for a continuous rotation effect
+///
+/// The separation allows smooth looping effects without restarting
+/// the primary animation timeline.
 class _SplashScreenState extends State<SplashScreen>
-    with TickerProviderStateMixin { // Changed to TickerProviderStateMixin
+    with TickerProviderStateMixin {
 
-  // 1. Main Controller (for scale and fade - runs once)
+  /// Controller responsible for one-time animations such as
+  /// scaling the icon and fading in the text.
   late AnimationController _mainController;
 
-  // 2. Rotation Controller (for continuous spin - repeats)
+  /// Controller responsible for continuous rotation of the scanner ring.
   late AnimationController _rotationController;
 
+  /// Controls the pulsing scale of the central icon.
   late Animation<double> _scaleAnimation;
+
+  /// Controls the opacity of the splash text.
   late Animation<double> _fadeAnimation;
+
+  /// Controls the angular rotation of the scanner ring.
   late Animation<double> _rotationAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    // 1. Initialize Main Controller (Runs once, 3 seconds duration)
     _mainController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
     );
 
-    // 2. Initialize Rotation Controller (Runs continuously, 2 seconds for a full spin)
     _rotationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
-    )..repeat(); // Starts repeating immediately
+    )..repeat();
 
-    // --- Animations linked to _mainController (run once) ---
-
-    // Icon pulses in and out, settling at 1.0 scale
     _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(
         parent: _mainController,
@@ -47,28 +66,25 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // Text fades in and stays visible (Interval ends at 1.0)
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _mainController,
-        curve: const Interval(0.4, 1.0, curve: Curves.easeIn), // Tweak: Ends at 1.0
+        curve: const Interval(0.4, 1.0, curve: Curves.easeIn),
       ),
     );
 
-    // --- Animation linked to _rotationController (repeats) ---
-
-    // Subtle rotation for a "scanning" ring effect (uses the repeating controller)
-    _rotationAnimation = Tween<double>(begin: 0.0, end: 2 * math.pi).animate(
+    _rotationAnimation = Tween<double>(
+      begin: 0.0,
+      end: 2 * math.pi,
+    ).animate(
       CurvedAnimation(
-        parent: _rotationController, // Tweak: Uses the repeating controller
+        parent: _rotationController,
         curve: Curves.linear,
       ),
     );
 
-    // Start the main animation sequence
     _mainController.forward();
 
-    // Navigate after animation + buffer
     Future.delayed(const Duration(seconds: 4), () {
       if (mounted) {
         Navigator.pushReplacementNamed(context, "/home");
@@ -79,7 +95,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _mainController.dispose();
-    _rotationController.dispose(); // Dispose the second controller
+    _rotationController.dispose();
     super.dispose();
   }
 
@@ -92,28 +108,24 @@ class _SplashScreenState extends State<SplashScreen>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF1A1A2E), // Dark Deep Blue
-              Color(0xFF0F0F1A), // Almost Black
+              Color(0xFF1A1A2E),
+              Color(0xFF0F0F1A),
             ],
           ),
         ),
         child: Stack(
           children: [
-            // Centered Content
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // The Animated Icon Stack
                   Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Rotating "Scanner" Ring (Listens to _rotationController)
                       AnimatedBuilder(
-                        animation: _rotationController, // Tweak: Listens to the repeating controller
+                        animation: _rotationController,
                         builder: (context, child) {
                           return Transform.rotate(
-                            // Tweak: Use the prepared animation value
                             angle: _rotationAnimation.value,
                             child: Container(
                               width: 140,
@@ -121,13 +133,12 @@ class _SplashScreenState extends State<SplashScreen>
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: Colors.deepPurpleAccent.withOpacity(0.3),
+                                  color: Colors.deepPurpleAccent.withValues(alpha: 0.3),
                                   width: 2,
-                                  style: BorderStyle.solid,
                                 ),
                                 gradient: const SweepGradient(
                                   colors: [
-                                    Color.fromARGB(0, 103, 58, 183), // fully transparent deepPurpleAccent
+                                    Color.fromARGB(0, 103, 58, 183),
                                     Colors.deepPurpleAccent,
                                   ],
                                   stops: [0.5, 1.0],
@@ -138,7 +149,6 @@ class _SplashScreenState extends State<SplashScreen>
                         },
                       ),
 
-                      // Pulsing Icon with Glow (Listens to _mainController via ScaleTransition)
                       ScaleTransition(
                         scale: _scaleAnimation,
                         child: Container(
@@ -146,7 +156,7 @@ class _SplashScreenState extends State<SplashScreen>
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.deepPurpleAccent.withOpacity(0.6),
+                                color: Colors.deepPurpleAccent.withValues(alpha: 0.6),
                                 blurRadius: 40,
                                 spreadRadius: 5,
                               ),
@@ -164,9 +174,8 @@ class _SplashScreenState extends State<SplashScreen>
 
                   const SizedBox(height: 40),
 
-                  // Animated Text (Fade & Slide - Listens to _mainController via FadeTransition)
                   FadeTransition(
-                    opacity: _fadeAnimation, // Tweak: This now holds 1.0 until navigation
+                    opacity: _fadeAnimation,
                     child: Column(
                       children: [
                         const Text(
@@ -183,7 +192,7 @@ class _SplashScreenState extends State<SplashScreen>
                           "INITIALIZING SENSORS...",
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white.withOpacity(0.5),
+                            color: Colors.white.withValues(alpha: 0.5),
                             letterSpacing: 1.5,
                           ),
                         ),
@@ -194,7 +203,6 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
 
-            // Bottom Progress Indicator (Continuous visual sign of loading)
             Positioned(
               bottom: 50,
               left: 0,
@@ -203,7 +211,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: SizedBox(
                   width: 200,
                   child: LinearProgressIndicator(
-                    backgroundColor: Colors.white.withOpacity(0.1),
+                    backgroundColor: Colors.white.withValues(alpha: 0.1),
                     color: Colors.deepPurpleAccent,
                     minHeight: 2,
                   ),

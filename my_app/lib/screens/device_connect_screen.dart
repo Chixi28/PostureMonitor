@@ -6,6 +6,22 @@ import '../provider/theme_provider.dart'; // REQUIRED for theming
 import '../bluetooth/open_earable_manager.dart';
 import 'live_data_screen.dart';
 
+/// Device Connect Screen
+///
+/// This file implements a Flutter screen for scanning, connecting, and managing OpenEarable Bluetooth devices.
+/// It provides a user interface for device discovery, connection management, and navigation to live sensor data.
+///
+/// Features:
+/// - Scans for nearby OpenEarable Bluetooth devices and displays them in a list.
+/// - Allows users to connect to or disconnect from a device.
+/// - Shows connection status and device information.
+/// - Navigates to the live data screen for real-time sensor telemetry.
+/// - Handles sensor data callbacks and updates UI accordingly.
+/// - Adapts UI to light/dark themes using Provider.
+
+/// Main screen widget for device connection and management.
+///
+/// Displays available devices, connection status, and navigation to sensor data.
 class DeviceConnectScreen extends StatefulWidget {
   const DeviceConnectScreen({super.key});
 
@@ -13,8 +29,11 @@ class DeviceConnectScreen extends StatefulWidget {
   State<DeviceConnectScreen> createState() => _DeviceConnectScreenState();
 }
 
+/// State class for [DeviceConnectScreen].
+///
+/// Handles scanning, connecting, disconnecting, and UI updates for device management.
 class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
-  // Use singleton instance
+  /// Singleton instance for managing Bluetooth and sensor data.
   final BluetoothManager bluetoothManager = BluetoothManager.instance;
 
   List<DiscoveredDevice> devices = [];
@@ -69,7 +88,6 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
       setState(() => devices = scannedDevices);
 
     } catch (e) {
-      print("Error scanning: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -85,13 +103,13 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
 
   // 💡 NEW: Extracted common data stream setup logic (now includes gyroscope)
   Future<void> _startDataStream() async {
-    print("Starting data stream setup...");
+    
 
     // Configure device to enable both sensors
     await bluetoothManager.configureSensors(accel: true, gyro: true, mag: false);
 
 
-    print("Data stream setup complete.");
+    
   }
 
 
@@ -103,7 +121,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
         final label = device.name.isNotEmpty ? device.name : device.id;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Connecting to ${label}...'),
+            content: Text('Connecting to $label...'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -118,6 +136,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
           // Get battery level
           final battery = await bluetoothManager.getBatteryLevel();
 
+          // ignore: use_build_context_synchronously
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('✅ Connected! Battery: ${battery ?? 'N/A'}%'),
@@ -129,7 +148,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
         throw Exception('Connection failed');
       }
     } catch (e) {
-      print("Connection error: $e");
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -156,8 +175,8 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
           ),
         );
       }
+    // ignore: empty_catches
     } catch (e) {
-      print("Disconnect error: $e");
     }
   }
 
@@ -178,20 +197,20 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
         bluetoothManager.connectedDevice?.id == result.id;
 
     final textColor = isDarkMode ? Colors.white : Colors.black;
-    final subtitleColor = textColor.withOpacity(0.5);
+    final subtitleColor = textColor.withValues(alpha: 0.5);
 
     // Theme-aware colors for the tile
     final tileBackgroundColor = isAlreadyConnected
-        ? Colors.green.withOpacity(0.1)
+        ? Colors.green.withValues(alpha: 0.1)
         : isDarkMode
-        ? Colors.white.withOpacity(0.05)
-        : Colors.black.withOpacity(0.05);
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.black.withValues(alpha: 0.05);
 
     final tileBorderColor = isAlreadyConnected
         ? Colors.green
         : isDarkMode
-        ? Colors.white.withOpacity(0.1)
-        : Colors.black.withOpacity(0.1);
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.1);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -209,8 +228,8 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: isAlreadyConnected
-                ? Colors.green.withOpacity(0.2)
-                : Colors.blueAccent.withOpacity(0.1),
+                ? Colors.green.withValues(alpha: 0.2)
+                : Colors.blueAccent.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -253,7 +272,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
             await connectToDevice(result);
           },
           style: TextButton.styleFrom(
-            backgroundColor: Colors.green.withOpacity(0.2),
+            backgroundColor: Colors.green.withValues(alpha: 0.2),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
@@ -280,7 +299,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
 
     // Theme-aware colors
     final textColor = isDarkMode ? Colors.white : Colors.black;
-    final subtitleColor = textColor.withOpacity(0.5);
+    final subtitleColor = textColor.withValues(alpha: 0.5);
 
     // Background Gradient (custom dark mode theme colors from original code)
     final backgroundGradient = isDarkMode
@@ -323,7 +342,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
               child: Icon(
                 Icons.radar,
                 color: isScanning
-                    ? Colors.blueAccent.withOpacity(0.8)
+                    ? Colors.blueAccent.withValues(alpha: 0.8)
                     : Colors.blueAccent,
               ),
             ),
@@ -342,7 +361,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.2),
+                    color: Colors.green.withValues(alpha: 0.2),
                     border: const Border(
                       bottom: BorderSide(color: Colors.green, width: 1),
                     ),
@@ -375,7 +394,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.sensors, color: textColor.withOpacity(0.7)),
+                        icon: Icon(Icons.sensors, color: textColor.withValues(alpha: 0.7)),
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -411,13 +430,13 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                     children: [
                       Icon(
                         Icons.bluetooth_disabled,
-                        color: textColor.withOpacity(0.3),
+                        color: textColor.withValues(alpha: 0.3),
                         size: 60,
                       ),
                       const SizedBox(height: 16),
                       Text(
                         "No OpenEarable devices found",
-                        style: TextStyle(color: textColor.withOpacity(0.7)),
+                        style: TextStyle(color: textColor.withValues(alpha: 0.7)),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -471,7 +490,7 @@ class _DeviceConnectScreenState extends State<DeviceConnectScreen> {
                           onPressed: isScanning ? null : startScan,
                           foregroundColor: isDarkMode ? Colors.black : Colors.white,
                           backgroundColor: isScanning
-                              ? Colors.blueAccent.withOpacity(0.5)
+                              ? Colors.blueAccent.withValues(alpha: 0.5)
                               : Colors.blueAccent,
                           icon: Icon(isScanning ? Icons.hourglass_top : Icons.bluetooth_searching),
                           label: const Text(

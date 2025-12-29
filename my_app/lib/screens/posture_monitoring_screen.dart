@@ -6,13 +6,21 @@ import '../bluetooth/open_earable_manager.dart';
 import 'dart:math';
 
 enum PostureStatus {
+  /// User is in good posture (within calibrated thresholds)
   good,
+  /// User is approaching poor posture (slight deviation)
   warning,
+  /// Neutral/unknown posture (e.g., not enough data)
   neutral,
+  /// User is in bad posture (significant deviation)
   bad,
+  /// Calibration is in progress
   calibrating,
 }
 
+/// Main screen widget for posture monitoring.
+///
+/// Displays posture status, calibration controls, and live visualization.
 class PostureMonitorScreen extends StatefulWidget {
   const PostureMonitorScreen({super.key});
 
@@ -20,7 +28,11 @@ class PostureMonitorScreen extends StatefulWidget {
   State<PostureMonitorScreen> createState() => _PostureMonitorScreenState();
 }
 
+/// State class for [PostureMonitorScreen].
+///
+/// Handles calibration, posture analysis, sensor data processing, and UI updates.
 class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
+  /// Singleton instance for managing Bluetooth and sensor data.
   final BluetoothManager bluetoothManager = BluetoothManager.instance;
 
   // Sensor data
@@ -47,8 +59,8 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
   double _calibratedRoll = 0.0;        // Baseline good posture roll
   double _calibratedPitchStd = 0.0;    // Natural variation in pitch during good posture
   double _calibratedRollStd = 0.0;     // Natural variation in roll during good posture
-  List<double> _calibrationPitchSamples = [];
-  List<double> _calibrationRollSamples = [];
+  final List<double> _calibrationPitchSamples = [];
+  final List<double> _calibrationRollSamples = [];
   bool _isCalibrated = false;
 
   // Guided calibration state
@@ -406,7 +418,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
     final duration = DateTime.now().difference(_sessionStartTime!);
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
-    return '${minutes}:${seconds.toString().padLeft(2, '0')}';
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
   IconData _getPostureIcon() {
@@ -428,9 +440,9 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.1),
+        color: Colors.blue.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+        border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -453,7 +465,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
           const SizedBox(height: 20),
           LinearProgressIndicator(
             value: _calibrationProgress / 100,
-            backgroundColor: Colors.blue.withOpacity(0.2),
+            backgroundColor: Colors.blue.withValues(alpha: 0.2),
             valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
           ),
           const SizedBox(height: 10),
@@ -471,12 +483,12 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.signal_cellular_connected_no_internet_0_bar, color: textColor.withOpacity(0.25), size: 60),
+          Icon(Icons.signal_cellular_connected_no_internet_0_bar, color: textColor.withValues(alpha: 0.25), size: 60),
           const SizedBox(height: 20),
           Text(
             'No Live Data',
             style: TextStyle(
-              color: textColor.withOpacity(0.54),
+              color: textColor.withValues(alpha: 0.54),
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
@@ -485,7 +497,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
           Text(
             'Connect your OpenEarable device to start monitoring posture.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: textColor.withOpacity(0.38)),
+            style: TextStyle(color: textColor.withValues(alpha: 0.38)),
           ),
         ],
       ),
@@ -513,7 +525,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
             Text(
               _isCalibrated ? 'DEVIATION FROM GOOD POSTURE' : 'HEAD ORIENTATION',
               style: TextStyle(
-                color: textColor.withOpacity(0.7),
+                color: textColor.withValues(alpha: 0.7),
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
@@ -526,7 +538,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                   // Background grid
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: textColor.withOpacity(0.1)),
+                      border: Border.all(color: textColor.withValues(alpha: 0.1)),
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
@@ -541,7 +553,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                         width: (2 * _badPitchThreshold / 45.0) * maxRadius,
                         height: (2 * _badPitchThreshold / 45.0) * maxRadius,
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.red.withOpacity(0.5), width: 3.0),
+                          border: Border.all(color: Colors.red.withValues(alpha: 0.5), width: 3.0),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -554,7 +566,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                         width: (2 * _warningPitchThreshold / 45.0) * maxRadius,
                         height: (2 * _warningPitchThreshold / 45.0) * maxRadius,
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.orange.withOpacity(0.5), width: 3.0),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.5), width: 3.0),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -567,7 +579,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                         width: (2 * _goodPitchThreshold / 45.0) * maxRadius,
                         height: (2 * _goodPitchThreshold / 45.0) * maxRadius,
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.green.withOpacity(0.5), width: 3.0),
+                          border: Border.all(color: Colors.green.withValues(alpha: 0.5), width: 3.0),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -579,13 +591,13 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                     top: centerY - 1,
                     left: 0,
                     right: 0,
-                    child: Container(height: 2, color: Colors.blue.withOpacity(0.5)),
+                    child: Container(height: 2, color: Colors.blue.withValues(alpha: 0.5)),
                   ),
                   Positioned(
                     left: centerX - 1,
                     top: 0,
                     bottom: 0,
-                    child: Container(width: 2, color: Colors.blue.withOpacity(0.5)),
+                    child: Container(width: 2, color: Colors.blue.withValues(alpha: 0.5)),
                   ),
 
                   // Center point
@@ -596,7 +608,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                       width: 16,
                       height: 16,
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.7),
+                        color: Colors.blue.withValues(alpha: 0.7),
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                       ),
@@ -616,12 +628,12 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: _postureColor.withOpacity(0.6),
+                        color: _postureColor.withValues(alpha: 0.6),
                         shape: BoxShape.circle,
                         border: Border.all(color: _postureColor, width: 3),
                         boxShadow: [
                           BoxShadow(
-                            color: _postureColor.withOpacity(0.3),
+                            color: _postureColor.withValues(alpha: 0.3),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),
@@ -676,7 +688,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
         Text(
           label,
           style: TextStyle(
-            color: color.withOpacity(0.7),
+            color: color.withValues(alpha: 0.7),
             fontSize: 10,
             fontWeight: FontWeight.bold,
           ),
@@ -695,7 +707,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
           Text(
             _isCalibrated ? "Δ: $deviation" : "",
             style: TextStyle(
-              color: color.withOpacity(0.6),
+              color: color.withValues(alpha: 0.6),
               fontSize: 10,
             ),
           ),
@@ -717,7 +729,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDarkMode = themeProvider.currentBrightness == Brightness.dark;
     final textColor = isDarkMode ? Colors.white : Colors.black;
-    final containerColor = isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
+    final containerColor = isDarkMode ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05);
     final isConnected = bluetoothManager.isConnected;
 
     int postureScore = 100;
@@ -746,7 +758,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                 ? const Icon(Icons.timer, color: Colors.blue)
                 : Icon(
               _isCalibrated ? Icons.check_circle : Icons.calendar_today,
-              color: isConnected ? Theme.of(context).iconTheme.color?.withOpacity(0.7) : Colors.grey,
+              color: isConnected ? Theme.of(context).iconTheme.color?.withValues(alpha: 0.7) : Colors.grey,
             ),
             onPressed: isConnected && !_isCalibrating ? _startGuidedCalibration : null,
             tooltip: _isCalibrated ? 'Recalibrate Posture' : 'Start Guided Calibration',
@@ -805,7 +817,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                       Text(
                         _getSessionDuration(),
                         style: TextStyle(
-                          color: textColor.withOpacity(0.7),
+                          color: textColor.withValues(alpha: 0.7),
                           fontSize: 14,
                         ),
                       ),
@@ -822,12 +834,12 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: _postureColor.withOpacity(0.1),
+                      color: _postureColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _postureColor.withOpacity(0.3)),
+                      border: Border.all(color: _postureColor.withValues(alpha: 0.3)),
                       boxShadow: [
                         BoxShadow(
-                          color: _postureColor.withOpacity(0.2),
+                          color: _postureColor.withValues(alpha: 0.2),
                           blurRadius: 10,
                           spreadRadius: 1,
                         ),
@@ -929,7 +941,7 @@ class _PostureMonitorScreenState extends State<PostureMonitorScreen> {
                   decoration: BoxDecoration(
                     color: containerColor,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: textColor.withOpacity(0.1)),
+                    border: Border.all(color: textColor.withValues(alpha: 0.1)),
                   ),
                   child: !isConnected
                       ? _buildDisconnectedView(context, textColor, containerColor)

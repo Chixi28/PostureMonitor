@@ -1,8 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart'; // ADDED
 import '../provider/theme_provider.dart'; // ADDED
-// import 'posture_monitoring_screen.dart'; // Not needed since routes are used
 
+/// Home Screen
+///
+/// This file implements the main home screen for the Head Tracker app.
+/// It provides a dashboard with navigation to core features: live data, posture monitoring, Bluetooth device management, and settings.
+///
+/// Features:
+/// - Displays a custom header and system status.
+/// - Shows a grid of menu cards for navigation to app features.
+/// - Adapts UI to light/dark themes using Provider.
+
+/// Main home screen widget for the Head Tracker app.
+///
+/// Displays a dashboard with navigation to live data, posture monitoring, Bluetooth, and settings.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -14,7 +26,7 @@ class HomeScreen extends StatelessWidget {
 
     // Theme-aware colors
     final textColor = isDarkMode ? Colors.white : Colors.black;
-    final subtitleColor = textColor.withOpacity(0.6);
+    final subtitleColor = textColor.withValues(alpha: 0.6);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -56,7 +68,7 @@ class HomeScreen extends StatelessWidget {
                         Text(
                           "Head Tracker",
                           style: TextStyle(
-                            color: textColor.withOpacity(0.9), // THEME CHANGE: Text color
+                            color: textColor.withValues(alpha: 0.9), // THEME CHANGE: Text color
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1.2,
@@ -161,12 +173,12 @@ class HomeScreen extends StatelessWidget {
 
     // THEME CHANGE: Card gradient and border must be conditional
     final cardGradient = isDarkMode
-        ? [Colors.white.withOpacity(0.1), Colors.white.withOpacity(0.05)] // Dark mode transparent look
-        : [Colors.white.withOpacity(0.8), Colors.white.withOpacity(0.7)]; // Light mode background
+        ? [Colors.white.withValues(alpha: 0.1), Colors.white.withValues(alpha: 0.05)] // Dark mode transparent look
+        : [Colors.white.withValues(alpha: 0.8), Colors.white.withValues(alpha: 0.7)]; // Light mode background
 
     final cardBorderColor = isDarkMode
-        ? Colors.white.withOpacity(0.1)
-        : Colors.black.withOpacity(0.1);
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.1);
 
 
     return Container(
@@ -175,7 +187,7 @@ class HomeScreen extends StatelessWidget {
         boxShadow: [
           // THEME CHANGE: Shadow is softer/lighter in Light Mode
           BoxShadow(
-            color: isDarkMode ? Colors.black.withOpacity(0.2) : Colors.black.withOpacity(0.1),
+            color: isDarkMode ? Colors.black.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -209,7 +221,7 @@ class HomeScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.2),
+                      color: accentColor.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(icon, size: 32, color: accentColor),
@@ -231,7 +243,7 @@ class HomeScreen extends StatelessWidget {
                       Text(
                         subtitle,
                         style: TextStyle(
-                          color: cardTextColor.withOpacity(0.5), // THEME CHANGE: Subtitle color
+                          color: cardTextColor.withValues(alpha: 0.5), // THEME CHANGE: Subtitle color
                           fontSize: 12,
                         ),
                       ),
